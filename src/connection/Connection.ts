@@ -41,7 +41,7 @@ export class Connection {
       logger.debug(`Connecting to ${this.config.host}:${this.config.port}`);
 
       const options: any = {
-        transport: thrift.TBufferedTransport,
+        transport: thrift.TFramedTransport,
         protocol: thrift.TBinaryProtocol,
         path: undefined,
         headers: undefined,
