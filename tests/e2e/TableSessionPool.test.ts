@@ -44,13 +44,13 @@ describe('TableSessionPool E2E Tests', () => {
       console.warn('Could not connect to IoTDB. E2E tests will be skipped.');
       console.warn('Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.');
     }
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     if (pool && isConnected) {
       await pool.close();
     }
-  }, 30000);
+  }, 60000);
 
   test('Should initialize table session pool with minimum connections', async () => {
     if (!isConnected) {

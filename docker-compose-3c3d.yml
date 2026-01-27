@@ -17,7 +17,7 @@ services:
       - IOTDB_PASSWORD=root
     networks:
       - iotdb-network
-    command: ["npm", "run", "test:e2e"]
+    command: sh -c "sleep 60 && npm run test:e2e"
 
   # ConfigNode 1
   iotdb-confignode-1:

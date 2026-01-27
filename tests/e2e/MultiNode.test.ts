@@ -48,7 +48,7 @@ describe('Multi-Node E2E Tests', () => {
     } catch (error) {
       console.warn('Could not connect to IoTDB. Multi-node E2E tests will be skipped.');
     }
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     if (pool && isConnected) {
@@ -59,7 +59,7 @@ describe('Multi-Node E2E Tests', () => {
       }
       await pool.close();
     }
-  }, 30000);
+  }, 60000);
 
   test('Should initialize pool with multiple connections', async () => {
     if (!isConnected) {
