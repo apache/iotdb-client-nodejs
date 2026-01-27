@@ -42,8 +42,11 @@ export class Session {
   protected config: Config;
   protected connection: Connection;
 
-  constructor(config: Partial<Config>) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+  constructor(config: Config) {
+    if (!config.host || !config.port) {
+      throw new Error('Host and port are required');
+    }
+    this.config = { ...DEFAULT_CONFIG, ...config } as Config;
     this.connection = new Connection(this.config);
   }
 
@@ -133,7 +136,7 @@ export class Session {
       prefixPath: tablet.deviceId,
       measurements: tablet.measurements,
       values: this.serializeTabletValues(tablet),
-      timestamps: Buffer.from(new BigInt64Array(tablet.timestamps).buffer),
+      timestamps: Buffer.from(new BigInt64Array(tablet.timestamps.map(t => BigInt(t))).buffer),
       types: tablet.dataTypes,
       size: tablet.timestamps.length,
       isAligned: false,

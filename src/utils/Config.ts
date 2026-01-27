@@ -48,12 +48,17 @@ export interface EndPoint {
   port: number;
 }
 
-export const DEFAULT_CONFIG = {
+export const DEFAULT_CONFIG: Partial<Config> = {
+  host: 'localhost',
   port: 6667,
   username: 'root',
   password: 'root',
   fetchSize: 1024,
   enableSSL: false,
+};
+
+export const DEFAULT_POOL_CONFIG: Partial<PoolConfig> = {
+  ...DEFAULT_CONFIG,
   maxPoolSize: 10,
   minPoolSize: 1,
   maxIdleTime: 60000, // 60 seconds

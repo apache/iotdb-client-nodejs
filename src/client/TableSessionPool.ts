@@ -18,7 +18,7 @@
  */
 
 import { Session, QueryResult, Tablet } from './Session';
-import { PoolConfig, DEFAULT_CONFIG, EndPoint } from '../utils/Config';
+import { PoolConfig, DEFAULT_POOL_CONFIG, EndPoint } from '../utils/Config';
 import { logger } from '../utils/Logger';
 
 interface PooledTableSession {
@@ -41,7 +41,7 @@ export class TableSessionPool {
     port: number,
     config: Partial<PoolConfig> = {}
   ) {
-    this.config = { ...DEFAULT_CONFIG, ...config, port };
+    this.config = { ...DEFAULT_POOL_CONFIG, ...config, port } as PoolConfig;
 
     // Support multiple nodes
     const hostList = Array.isArray(hosts) ? hosts : [hosts];

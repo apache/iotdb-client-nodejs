@@ -20,5 +20,5 @@
 export { Session, QueryResult, Tablet } from './client/Session';
 export { SessionPool } from './client/SessionPool';
 export { TableSessionPool } from './client/TableSessionPool';
-export { Config, PoolConfig, SSLOptions, EndPoint, DEFAULT_CONFIG } from './utils/Config';
+export { Config, PoolConfig, SSLOptions, EndPoint, DEFAULT_CONFIG, DEFAULT_POOL_CONFIG } from './utils/Config';
 export { logger, LogLevel } from './utils/Logger';
