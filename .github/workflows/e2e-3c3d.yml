@@ -69,6 +69,7 @@ jobs:
           IOTDB_PASSWORD: root
           MULTI_NODE: 'true'
         run: |
+          set -o pipefail
           npm run test:e2e 2>&1 | tee test-results/test-output.log
           
       - name: Stop and clean up Docker Compose
