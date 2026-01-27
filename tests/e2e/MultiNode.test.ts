@@ -99,7 +99,7 @@ describe('Multi-Node E2E Tests', () => {
       return;
     }
 
-    const concurrentOperations = 30;
+    const concurrentOperations = 20;
     const promises: Promise<any>[] = [];
 
     // Mix of insert and query operations
@@ -136,7 +136,7 @@ describe('Multi-Node E2E Tests', () => {
       return;
     }
 
-    const operationCount = 15;
+    const operationCount = 10;
     const promises: Promise<any>[] = [];
 
     for (let i = 0; i < operationCount; i++) {

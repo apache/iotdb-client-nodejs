@@ -41,9 +41,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 256M
         reservations:
-          memory: 192M
+          memory: 128M
 
   # ConfigNode 2
   iotdb-confignode-2:
@@ -70,9 +70,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 256M
         reservations:
-          memory: 192M
+          memory: 128M
 
   # ConfigNode 3
   iotdb-confignode-3:
@@ -101,9 +101,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 256M
         reservations:
-          memory: 192M
+          memory: 128M
 
   # DataNode 1
   iotdb-datanode-1:
@@ -133,9 +133,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 512M
         reservations:
-          memory: 384M
+          memory: 256M
 
   # DataNode 2
   iotdb-datanode-2:
@@ -167,9 +167,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 512M
         reservations:
-          memory: 384M
+          memory: 256M
 
   # DataNode 3
   iotdb-datanode-3:
@@ -203,9 +203,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 512M
         reservations:
-          memory: 384M
+          memory: 256M
 
 networks:
   iotdb-network:
