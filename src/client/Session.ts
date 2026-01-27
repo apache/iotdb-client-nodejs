@@ -282,39 +282,189 @@ export class Session {
   private async parseDataSet(
     dataset: any,
     _columnCount: number,
-    _dataTypes: string[]
+    dataTypes: string[]
   ): Promise<any[][]> {
     const rows: any[][] = [];
 
-    if (!dataset || !dataset.time || !Buffer.isBuffer(dataset.time)) {
+    if (!dataset) {
+      logger.debug('parseDataSet: dataset is null or undefined');
       return rows;
     }
 
+    // Handle case where dataset.time is not a Buffer (might be an array or null)
+    if (!dataset.time) {
+      logger.debug('parseDataSet: dataset.time is null or undefined');
+      return rows;
+    }
+
+    logger.debug(`parseDataSet: dataset.time type: ${typeof dataset.time}, isBuffer: ${Buffer.isBuffer(dataset.time)}, length: ${dataset.time.length || 'N/A'}`);
+    logger.debug(`parseDataSet: dataset.valueList type: ${typeof dataset.valueList}, isArray: ${Array.isArray(dataset.valueList)}, length: ${dataset.valueList?.length || 'N/A'}`);
+    logger.debug(`parseDataSet: dataTypes: ${JSON.stringify(dataTypes)}`);
+
+    // Convert time to Buffer if it's not already
+    const timeBuffer = Buffer.isBuffer(dataset.time) ? dataset.time : Buffer.from(dataset.time);
+    
     // Validate buffer has sufficient length
-    const timeBufferLength = dataset.time.length;
+    const timeBufferLength = timeBuffer.length;
     if (timeBufferLength === 0 || timeBufferLength % 8 !== 0) {
       logger.warn('Invalid time buffer length:', timeBufferLength);
       return rows;
     }
 
     const rowCount = Math.floor(timeBufferLength / 8);
+    logger.debug(`parseDataSet: rowCount = ${rowCount}`);
+    
+    // Parse value buffers
+    const parsedColumns: any[][] = [];
+    if (dataset.valueList && Array.isArray(dataset.valueList)) {
+      for (let colIndex = 0; colIndex < dataset.valueList.length; colIndex++) {
+        const valueBuffer = Buffer.isBuffer(dataset.valueList[colIndex]) 
+          ? dataset.valueList[colIndex] 
+          : Buffer.from(dataset.valueList[colIndex]);
+        const bitmap = dataset.bitmapList && dataset.bitmapList[colIndex]
+          ? (Buffer.isBuffer(dataset.bitmapList[colIndex]) 
+              ? dataset.bitmapList[colIndex] 
+              : Buffer.from(dataset.bitmapList[colIndex]))
+          : null;
+        
+        // Get data type - dataTypes might be an array of strings or numbers
+        let dataType = 5; // Default to TEXT
+        if (dataTypes && dataTypes[colIndex] !== undefined) {
+          const typeStr = String(dataTypes[colIndex]).toUpperCase();
+          if (typeStr.includes('BOOLEAN')) dataType = 0;
+          else if (typeStr.includes('INT32')) dataType = 1;
+          else if (typeStr.includes('INT64')) dataType = 2;
+          else if (typeStr.includes('FLOAT')) dataType = 3;
+          else if (typeStr.includes('DOUBLE')) dataType = 4;
+          else if (typeStr.includes('TEXT')) dataType = 5;
+        }
+        
+        logger.debug(`parseDataSet: column ${colIndex}, dataType = ${dataType}, valueBuffer.length = ${valueBuffer.length}`);
+        const columnValues = this.deserializeColumn(valueBuffer, dataType, rowCount, bitmap);
+        parsedColumns.push(columnValues);
+      }
+    }
 
+    // Build rows
     for (let i = 0; i < rowCount; i++) {
       const row: any[] = [];
-      // Add timestamp with bounds checking
+      
+      // Add timestamp
       if (i * 8 + 8 <= timeBufferLength) {
-        row.push(dataset.time.readBigInt64LE(i * 8));
+        row.push(timeBuffer.readBigInt64LE(i * 8));
       }
-
-      // Add values (simplified - actual implementation would parse based on type)
-      for (let j = 0; j < dataset.valueList.length; j++) {
-        row.push(null); // Placeholder
+      
+      // Add column values
+      for (let colIndex = 0; colIndex < parsedColumns.length; colIndex++) {
+        row.push(parsedColumns[colIndex][i]);
       }
-
+      
       rows.push(row);
     }
 
+    logger.debug(`parseDataSet: returning ${rows.length} rows`);
     return rows;
+  }
+
+  private deserializeColumn(buffer: Buffer, dataType: number, rowCount: number, bitmap: Buffer | null): any[] {
+    const values: any[] = [];
+    
+    try {
+      switch (dataType) {
+        case 0: { // BOOLEAN
+          for (let i = 0; i < rowCount; i++) {
+            if (this.isNull(bitmap, i)) {
+              values.push(null);
+            } else {
+              values.push(buffer[i] !== 0);
+            }
+          }
+          break;
+        }
+        case 1: { // INT32
+          const int32Array = new Int32Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 4));
+          for (let i = 0; i < rowCount && i < int32Array.length; i++) {
+            if (this.isNull(bitmap, i)) {
+              values.push(null);
+            } else {
+              values.push(int32Array[i]);
+            }
+          }
+          break;
+        }
+        case 2: { // INT64
+          const bigInt64Array = new BigInt64Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 8));
+          for (let i = 0; i < rowCount && i < bigInt64Array.length; i++) {
+            if (this.isNull(bitmap, i)) {
+              values.push(null);
+            } else {
+              values.push(bigInt64Array[i]);
+            }
+          }
+          break;
+        }
+        case 3: { // FLOAT
+          const float32Array = new Float32Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 4));
+          for (let i = 0; i < rowCount && i < float32Array.length; i++) {
+            if (this.isNull(bitmap, i)) {
+              values.push(null);
+            } else {
+              values.push(float32Array[i]);
+            }
+          }
+          break;
+        }
+        case 4: { // DOUBLE
+          const float64Array = new Float64Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 8));
+          for (let i = 0; i < rowCount && i < float64Array.length; i++) {
+            if (this.isNull(bitmap, i)) {
+              values.push(null);
+            } else {
+              values.push(float64Array[i]);
+            }
+          }
+          break;
+        }
+        case 5: { // TEXT
+          let offset = 0;
+          for (let i = 0; i < rowCount && offset < buffer.length; i++) {
+            if (this.isNull(bitmap, i)) {
+              values.push(null);
+            } else {
+              if (offset + 4 > buffer.length) break;
+              const strLength = buffer.readInt32LE(offset);
+              offset += 4;
+              if (offset + strLength > buffer.length) break;
+              const str = buffer.toString('utf8', offset, offset + strLength);
+              values.push(str);
+              offset += strLength;
+            }
+          }
+          break;
+        }
+        default:
+          // Unknown type, return nulls
+          for (let i = 0; i < rowCount; i++) {
+            values.push(null);
+          }
+      }
+    } catch (error) {
+      logger.error('Error deserializing column:', error);
+      // Fill with nulls on error
+      for (let i = values.length; i < rowCount; i++) {
+        values.push(null);
+      }
+    }
+    
+    return values;
+  }
+
+  private isNull(bitmap: Buffer | null, index: number): boolean {
+    if (!bitmap) return false;
+    const byteIndex = Math.floor(index / 8);
+    const bitIndex = index % 8;
+    if (byteIndex >= bitmap.length) return false;
+    return (bitmap[byteIndex] & (1 << bitIndex)) === 0;
   }
 
   isOpen(): boolean {
