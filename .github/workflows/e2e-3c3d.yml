@@ -30,22 +30,22 @@ jobs:
       - name: Create test results directory
         run: mkdir -p test-results
 
-      - name: Run E2E tests with Docker Compose
+      - name: Start IoTDB Cluster with Docker Compose
         run: |
-          docker compose -f docker-compose-3c3d.yml up --build --abort-on-container-exit --exit-code-from iotdb-test --quiet-pull || true
-
-      - name: Display test output
-        if: always()
+          docker compose -f docker-compose-3c3d.yml up -d
+          echo "Waiting for IoTDB cluster to be ready..."
+          sleep 75
+          
+      - name: Run E2E Tests
+        env:
+          IOTDB_HOST: localhost
+          IOTDB_PORT: 6667
+          IOTDB_USER: root
+          IOTDB_PASSWORD: root
         run: |
-          if [ -f test-results/test-output.log ]; then
-            echo "====== E2E Test Output ======"
-            cat test-results/test-output.log
-            echo "=============================="
-          else
-            echo "No test output file found"
-          fi
-
-      - name: Clean up
+          npm run test:e2e 2>&1 | tee test-results/test-output.log || true
+          
+      - name: Stop and clean up Docker Compose
         if: always()
         run: |
           docker compose -f docker-compose-3c3d.yml down -v

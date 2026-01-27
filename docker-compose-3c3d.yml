@@ -1,26 +1,4 @@
 services:
-  iotdb-test:
-    build:
-      context: .
-      dockerfile: tests/e2e/Dockerfile
-    depends_on:
-      iotdb-datanode-1:
-        condition: service_healthy
-      iotdb-datanode-2:
-        condition: service_healthy
-      iotdb-datanode-3:
-        condition: service_healthy
-    environment:
-      - IOTDB_HOST=iotdb-datanode-1
-      - IOTDB_PORT=6667
-      - IOTDB_USER=root
-      - IOTDB_PASSWORD=root
-    networks:
-      - iotdb-network
-    volumes:
-      - ./test-results:/app/test-results
-    command: sh -c "sleep 60 && npm run test:e2e > /app/test-results/test-output.log 2>&1"
-
   # ConfigNode 1
   iotdb-confignode-1:
     image: apache/iotdb:2.0.6-confignode
