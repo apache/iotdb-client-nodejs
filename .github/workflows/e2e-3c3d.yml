@@ -29,12 +29,12 @@ jobs:
 
       - name: Run E2E tests with Docker Compose
         run: |
-          docker compose -f docker-compose-3c3d.yml up --build --abort-on-container-exit --exit-code-from iotdb-test
+          docker compose -f docker-compose-3c3d.yml up --build --abort-on-container-exit --exit-code-from iotdb-test || docker-compose -f docker-compose-3c3d.yml up --build --abort-on-container-exit --exit-code-from iotdb-test
 
       - name: Clean up
         if: always()
         run: |
-          docker compose -f docker-compose-3c3d.yml down -v
+          docker compose -f docker-compose-3c3d.yml down -v || docker-compose -f docker-compose-3c3d.yml down -v
 
       - name: Upload test results
         if: always()

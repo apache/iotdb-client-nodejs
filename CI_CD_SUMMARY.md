@@ -35,18 +35,19 @@ Added comprehensive GitHub Actions workflows and enhanced E2E tests based on the
    - Troubleshooting guide
    - Configuration reference
 
-### Docker Compose Configurations
+### Docker Configurations
 
 1. **`docker-compose-1c1d.yml`**
    - Single node IoTDB setup
    - Services: 1 ConfigNode + 1 DataNode + test container
-   - Uses `apache/iotdb:latest` image
+   - Uses `apache/iotdb:1.3.6-confignode` and `apache/iotdb:1.3.6-datanode` images
    - Bridge network configuration
    - Health checks for all services
 
 2. **`docker-compose-3c3d.yml`**
    - Multi-node cluster setup
    - Services: 3 ConfigNodes + 3 DataNodes + test container
+   - Uses `apache/iotdb:1.3.6-confignode` and `apache/iotdb:1.3.6-datanode` images
    - Replication factors set to 3
    - Sequential startup with dependencies
    - Multiple ports exposed (6667, 6668, 6669)

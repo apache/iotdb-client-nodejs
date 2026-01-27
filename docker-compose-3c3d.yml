@@ -1,5 +1,3 @@
-version: '3.4'
-
 services:
   iotdb-test:
     build:
@@ -23,10 +21,9 @@ services:
 
   # ConfigNode 1
   iotdb-confignode-1:
-    image: apache/iotdb:latest
+    image: apache/iotdb:1.3.6-confignode
     container_name: iotdb-confignode-1
     restart: always
-    command: ["bash", "-c", "entrypoint.sh confignode"]
     healthcheck:
       test: ["CMD", "ls", "/iotdb/data"]
       interval: 3s
@@ -44,10 +41,9 @@ services:
 
   # ConfigNode 2
   iotdb-confignode-2:
-    image: apache/iotdb:latest
+    image: apache/iotdb:1.3.6-confignode
     container_name: iotdb-confignode-2
     restart: always
-    command: ["bash", "-c", "entrypoint.sh confignode"]
     healthcheck:
       test: ["CMD", "ls", "/iotdb/data"]
       interval: 3s
@@ -68,10 +64,9 @@ services:
 
   # ConfigNode 3
   iotdb-confignode-3:
-    image: apache/iotdb:latest
+    image: apache/iotdb:1.3.6-confignode
     container_name: iotdb-confignode-3
     restart: always
-    command: ["bash", "-c", "entrypoint.sh confignode"]
     healthcheck:
       test: ["CMD", "ls", "/iotdb/data"]
       interval: 3s
@@ -94,7 +89,7 @@ services:
 
   # DataNode 1
   iotdb-datanode-1:
-    image: apache/iotdb:latest
+    image: apache/iotdb:1.3.6-datanode
     container_name: iotdb-datanode-1
     restart: always
     healthcheck:
@@ -120,7 +115,7 @@ services:
 
   # DataNode 2
   iotdb-datanode-2:
-    image: apache/iotdb:latest
+    image: apache/iotdb:1.3.6-datanode
     container_name: iotdb-datanode-2
     restart: always
     healthcheck:
@@ -148,7 +143,7 @@ services:
 
   # DataNode 3
   iotdb-datanode-3:
-    image: apache/iotdb:latest
+    image: apache/iotdb:1.3.6-datanode
     container_name: iotdb-datanode-3
     restart: always
     healthcheck:
