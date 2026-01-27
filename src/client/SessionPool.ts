@@ -155,17 +155,22 @@ export class SessionPool {
         this.pool.length > minSize
     );
 
-    sessionsToRemove.forEach(async (ps) => {
-      try {
-        await ps.session.close();
-        const index = this.pool.indexOf(ps);
-        if (index > -1) {
-          this.pool.splice(index, 1);
+    // Use Promise.all to properly handle async operations
+    Promise.all(
+      sessionsToRemove.map(async (ps) => {
+        try {
+          await ps.session.close();
+          const index = this.pool.indexOf(ps);
+          if (index > -1) {
+            this.pool.splice(index, 1);
+          }
+          logger.debug('Removed idle session from pool');
+        } catch (error) {
+          logger.error('Error closing idle session:', error);
         }
-        logger.debug('Removed idle session from pool');
-      } catch (error) {
-        logger.error('Error closing idle session:', error);
-      }
+      })
+    ).catch((error) => {
+      logger.error('Error during session cleanup:', error);
     });
   }
 

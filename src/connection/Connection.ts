@@ -133,7 +133,6 @@ export class Connection {
       await new Promise<void>((resolve, reject) => {
         this.client.closeSession(closeReq, (err: Error, response: any) => {
           if (err) {
-            logger.warn('Error closing session:', err);
             reject(err);
             return;
           }
@@ -151,8 +150,8 @@ export class Connection {
 
       logger.debug('Connection closed');
     } catch (error) {
-      logger.error('Error closing connection:', error);
-      throw error;
+      logger.warn('Error closing connection:', error);
+      // Don't rethrow - closing is best effort
     }
   }
 

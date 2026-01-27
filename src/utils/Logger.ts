@@ -25,7 +25,15 @@ enum LogLevel {
 }
 
 class Logger {
-  private level: LogLevel = LogLevel.INFO;
+  private level: LogLevel;
+
+  constructor() {
+    // Allow configuration via environment variable
+    const envLevel = process.env.LOG_LEVEL?.toUpperCase();
+    this.level = envLevel && envLevel in LogLevel 
+      ? LogLevel[envLevel as keyof typeof LogLevel] 
+      : LogLevel.INFO;
+  }
 
   setLevel(level: LogLevel) {
     this.level = level;

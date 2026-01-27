@@ -131,12 +131,20 @@ export class Session {
     const client = this.connection.getClient();
     const sessionId = this.connection.getSessionId();
 
+    // Validate timestamps and convert to BigInt
+    const bigIntTimestamps = tablet.timestamps.map(t => {
+      if (typeof t !== 'number' || !Number.isFinite(t)) {
+        throw new Error(`Invalid timestamp: ${t}`);
+      }
+      return BigInt(Math.floor(t));
+    });
+
     const req = new ttypes.TSInsertTabletReq({
       sessionId: sessionId,
       prefixPath: tablet.deviceId,
       measurements: tablet.measurements,
       values: this.serializeTabletValues(tablet),
-      timestamps: Buffer.from(new BigInt64Array(tablet.timestamps.map(t => BigInt(t))).buffer),
+      timestamps: Buffer.from(new BigInt64Array(bigIntTimestamps).buffer),
       types: tablet.dataTypes,
       size: tablet.timestamps.length,
       isAligned: false,
@@ -273,18 +281,25 @@ export class Session {
   ): Promise<any[][]> {
     const rows: any[][] = [];
 
-    if (!dataset || !dataset.time) {
+    if (!dataset || !dataset.time || !Buffer.isBuffer(dataset.time)) {
       return rows;
     }
 
-    // Simple parsing - this is a basic implementation
-    // In a real implementation, you'd need to properly deserialize based on data types
-    const rowCount = Math.floor(dataset.time.length / 8); // 8 bytes per timestamp
+    // Validate buffer has sufficient length
+    const timeBufferLength = dataset.time.length;
+    if (timeBufferLength === 0 || timeBufferLength % 8 !== 0) {
+      logger.warn('Invalid time buffer length:', timeBufferLength);
+      return rows;
+    }
+
+    const rowCount = Math.floor(timeBufferLength / 8);
 
     for (let i = 0; i < rowCount; i++) {
       const row: any[] = [];
-      // Add timestamp
-      row.push(dataset.time.readBigInt64LE(i * 8));
+      // Add timestamp with bounds checking
+      if (i * 8 + 8 <= timeBufferLength) {
+        row.push(dataset.time.readBigInt64LE(i * 8));
+      }
 
       // Add values (simplified - actual implementation would parse based on type)
       for (let j = 0; j < dataset.valueList.length; j++) {
