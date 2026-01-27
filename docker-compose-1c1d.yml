@@ -13,7 +13,9 @@ services:
       - IOTDB_PASSWORD=root
     networks:
       - iotdb-network
-    command: sh -c "sleep 30 && npm run test:e2e"
+    volumes:
+      - ./test-results:/app/test-results
+    command: sh -c "sleep 30 && npm run test:e2e > /app/test-results/test-output.log 2>&1"
 
   iotdb-datanode:
     image: apache/iotdb:2.0.6-datanode

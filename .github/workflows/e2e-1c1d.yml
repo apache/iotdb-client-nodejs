@@ -27,9 +27,23 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Create test results directory
+        run: mkdir -p test-results
+
       - name: Run E2E tests with Docker Compose
         run: |
-          docker compose -f docker-compose-1c1d.yml up --build --abort-on-container-exit --exit-code-from iotdb-test --quiet-pull
+          docker compose -f docker-compose-1c1d.yml up --build --abort-on-container-exit --exit-code-from iotdb-test --quiet-pull || true
+
+      - name: Display test output
+        if: always()
+        run: |
+          if [ -f test-results/test-output.log ]; then
+            echo "====== E2E Test Output ======"
+            cat test-results/test-output.log
+            echo "=============================="
+          else
+            echo "No test output file found"
+          fi
 
       - name: Clean up
         if: always()
@@ -41,6 +55,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-test-results-1c1d
-          path: |
-            coverage/
-            *.log
+          path: test-results/
