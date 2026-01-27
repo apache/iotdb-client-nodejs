@@ -58,40 +58,33 @@ describe('Session E2E Tests', () => {
     expect(session.isOpen()).toBe(true);
   }, 60000);
 
-  test('Should execute non-query statement (CREATE DATABASE)', async () => {
+  test('Should create database and timeseries (tree model)', async () => {
     if (!session.isOpen()) {
       console.log('Skipping test - no IoTDB connection');
       return;
     }
 
+    // Cleanup from previous runs
     try {
-      await session.executeNonQueryStatement('CREATE DATABASE root.test_db');
-      // Should not throw
-    } catch (error: any) {
-      // Might fail if database already exists, that's ok
-      if (!error.message.includes('already exists')) {
-        throw error;
-      }
-    }
-  }, 60000);
-
-  test('Should execute non-query statement (CREATE TIMESERIES)', async () => {
-    if (!session.isOpen()) {
-      console.log('Skipping test - no IoTDB connection');
-      return;
+      await session.executeNonQueryStatement('DELETE DATABASE root.ln');
+    } catch (e) {
+      // Ignore if doesn't exist
     }
 
-    try {
-      await session.executeNonQueryStatement(
-        'CREATE TIMESERIES root.test_db.device1.temperature WITH DATATYPE=FLOAT, ENCODING=RLE'
-      );
-      // Should not throw
-    } catch (error: any) {
-      // Might fail if timeseries already exists, that's ok
-      if (!error.message.includes('already exists')) {
-        throw error;
-      }
-    }
+    // Create database (storage group)
+    await session.executeNonQueryStatement('CREATE DATABASE root.ln');
+
+    // Create timeseries
+    await session.executeNonQueryStatement(
+      'CREATE TIMESERIES root.ln.wf01.wt01.status WITH DATATYPE=BOOLEAN, ENCODING=PLAIN'
+    );
+    await session.executeNonQueryStatement(
+      'CREATE TIMESERIES root.ln.wf01.wt01.temperature WITH DATATYPE=FLOAT, ENCODING=RLE'
+    );
+
+    // Verify timeseries created
+    const result = await session.executeQueryStatement('SHOW TIMESERIES root.ln.**');
+    expect(result.rows.length).toBeGreaterThanOrEqual(2);
   }, 60000);
 
   test('Should execute query statement (SHOW DATABASES)', async () => {
@@ -109,44 +102,49 @@ describe('Session E2E Tests', () => {
     expect(Array.isArray(result.rows)).toBe(true);
   }, 60000);
 
-  test('Should execute query statement (SHOW TIMESERIES)', async () => {
+  test('Should insert and query data (tree model)', async () => {
     if (!session.isOpen()) {
       console.log('Skipping test - no IoTDB connection');
       return;
     }
 
+    const now = Date.now();
+    
+    // Insert tablet data
+    const tablet = {
+      deviceId: 'root.ln.wf01.wt01',
+      measurements: ['status', 'temperature'],
+      dataTypes: [0, 3], // BOOLEAN, FLOAT
+      timestamps: [now, now + 1, now + 2],
+      values: [
+        [true, 20.5],
+        [false, 21.0],
+        [true, 21.5],
+      ],
+    };
+
+    await session.insertTablet(tablet);
+
+    // Query the data
     const result = await session.executeQueryStatement(
-      'SHOW TIMESERIES root.test_db.**'
+      'SELECT status, temperature FROM root.ln.wf01.wt01 LIMIT 5'
     );
 
     expect(result).toBeDefined();
     expect(result.columns).toBeDefined();
-    expect(result.dataTypes).toBeDefined();
+    expect(result.rows.length).toBeGreaterThan(0);
   }, 60000);
 
-  test('Should insert tablet data', async () => {
+  test('Should cleanup database', async () => {
     if (!session.isOpen()) {
       console.log('Skipping test - no IoTDB connection');
       return;
     }
 
-    const tablet = {
-      deviceId: 'root.test_db.device1',
-      measurements: ['temperature', 'humidity'],
-      dataTypes: [3, 3], // FLOAT
-      timestamps: [Date.now(), Date.now() + 1000],
-      values: [
-        [25.5, 60.0],
-        [26.0, 61.5],
-      ],
-    };
-
     try {
-      await session.insertTablet(tablet);
-      // Should not throw
-    } catch (error: any) {
-      console.warn('Insert tablet failed:', error.message);
-      // Some errors might be expected if schema doesn't match
+      await session.executeNonQueryStatement('DELETE DATABASE root.ln');
+    } catch (e) {
+      // Ignore cleanup errors
     }
   }, 60000);
 

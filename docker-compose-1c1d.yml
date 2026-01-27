@@ -42,6 +42,8 @@ services:
           memory: 768M
         reservations:
           memory: 384M
+    logging:
+      driver: "none"
 
   iotdb-confignode:
     image: apache/iotdb:2.0.6-confignode
@@ -65,6 +67,8 @@ services:
           memory: 384M
         reservations:
           memory: 192M
+    logging:
+      driver: "none"
 
 networks:
   iotdb-network:

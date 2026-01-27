@@ -44,6 +44,8 @@ services:
           memory: 256M
         reservations:
           memory: 128M
+    logging:
+      driver: "none"
 
   # ConfigNode 2
   iotdb-confignode-2:
@@ -73,6 +75,8 @@ services:
           memory: 256M
         reservations:
           memory: 128M
+    logging:
+      driver: "none"
 
   # ConfigNode 3
   iotdb-confignode-3:
@@ -104,6 +108,8 @@ services:
           memory: 256M
         reservations:
           memory: 128M
+    logging:
+      driver: "none"
 
   # DataNode 1
   iotdb-datanode-1:
@@ -136,6 +142,8 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+    logging:
+      driver: "none"
 
   # DataNode 2
   iotdb-datanode-2:
@@ -170,6 +178,8 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+    logging:
+      driver: "none"
 
   # DataNode 3
   iotdb-datanode-3:
@@ -206,6 +216,8 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+    logging:
+      driver: "none"
 
 networks:
   iotdb-network:
