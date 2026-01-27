@@ -229,6 +229,7 @@ export abstract class BaseSessionPool {
     );
 
     this.pool = [];
+    this.waitQueue = [];
     logger.info(`${this.getPoolName()} closed`);
   }
 
