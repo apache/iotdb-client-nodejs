@@ -21,6 +21,9 @@ import { SessionPool } from '../../src/client/SessionPool';
 
 describe('Multi-Node E2E Tests', () => {
   const IOTDB_HOST = process.env.IOTDB_HOST || 'localhost';
+  const IOTDB_PORT_1 = parseInt(process.env.IOTDB_PORT || '6667', 10);
+  const IOTDB_PORT_2 = parseInt(process.env.IOTDB_PORT_2 || '6668', 10);
+  const IOTDB_PORT_3 = parseInt(process.env.IOTDB_PORT_3 || '6669', 10);
   const IOTDB_USER = process.env.IOTDB_USER || 'root';
   const IOTDB_PASSWORD = process.env.IOTDB_PASSWORD || 'root';
 
@@ -30,25 +33,30 @@ describe('Multi-Node E2E Tests', () => {
   let isConnected = false;
 
   beforeAll(async () => {
-    // For 3C3D setup, connect to all three DataNode ports: 6667, 6668, 6669
+    // For 3C3D setup, connect to all three DataNode ports
     // This enables true multi-node load distribution and testing
+    console.log(`Connecting to IoTDB cluster:`);
+    console.log(`  DataNode 1: ${IOTDB_HOST}:${IOTDB_PORT_1}`);
+    console.log(`  DataNode 2: ${IOTDB_HOST}:${IOTDB_PORT_2}`);
+    console.log(`  DataNode 3: ${IOTDB_HOST}:${IOTDB_PORT_3}`);
+    
     try {
       // Create three pools, each connected to a different DataNode
-      pool1 = new SessionPool(IOTDB_HOST, 6667, {
+      pool1 = new SessionPool(IOTDB_HOST, IOTDB_PORT_1, {
         username: IOTDB_USER,
         password: IOTDB_PASSWORD,
         maxPoolSize: 5,
         minPoolSize: 2,
       });
       
-      pool2 = new SessionPool(IOTDB_HOST, 6668, {
+      pool2 = new SessionPool(IOTDB_HOST, IOTDB_PORT_2, {
         username: IOTDB_USER,
         password: IOTDB_PASSWORD,
         maxPoolSize: 5,
         minPoolSize: 2,
       });
       
-      pool3 = new SessionPool(IOTDB_HOST, 6669, {
+      pool3 = new SessionPool(IOTDB_HOST, IOTDB_PORT_3, {
         username: IOTDB_USER,
         password: IOTDB_PASSWORD,
         maxPoolSize: 5,
@@ -60,9 +68,10 @@ describe('Multi-Node E2E Tests', () => {
       await pool3.init();
       
       isConnected = true;
-      console.log(`Connected to IoTDB cluster with 3 DataNodes on ports 6667, 6668, 6669`);
+      console.log(`Successfully connected to IoTDB cluster on ports ${IOTDB_PORT_1}, ${IOTDB_PORT_2}, ${IOTDB_PORT_3}`);
     } catch (error) {
       console.warn('Could not connect to IoTDB. Multi-node E2E tests will be skipped.');
+      console.warn('Error:', error);
     }
   }, 60000);
 

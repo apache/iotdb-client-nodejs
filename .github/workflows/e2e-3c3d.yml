@@ -63,8 +63,11 @@ jobs:
         env:
           IOTDB_HOST: localhost
           IOTDB_PORT: 6667
+          IOTDB_PORT_2: 6668
+          IOTDB_PORT_3: 6669
           IOTDB_USER: root
           IOTDB_PASSWORD: root
+          MULTI_NODE: 'true'
         run: |
           npm run test:e2e 2>&1 | tee test-results/test-output.log
           
