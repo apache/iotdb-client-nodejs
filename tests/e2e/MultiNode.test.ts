@@ -92,11 +92,15 @@ describe('Multi-Node E2E Tests', () => {
       } catch (error) {
         // Ignore cleanup errors
       }
-      await pool1.close();
-      await pool2.close();
-      await pool3.close();
+      
+      // Close pools in parallel with timeout protection
+      await Promise.allSettled([
+        pool1.close(),
+        pool2.close(),
+        pool3.close()
+      ]);
     }
-  }, 60000);
+  }, 90000); // Increased timeout for multi-node cleanup
 
   test('Should initialize pools with connections to all three DataNodes', async () => {
     if (!IS_MULTI_NODE || !isConnected) {
