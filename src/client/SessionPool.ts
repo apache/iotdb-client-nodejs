@@ -58,9 +58,11 @@ export class SessionPool {
       await this.createSession();
     }
 
-    // Start cleanup interval
+    // Start cleanup interval with proper async handling
     this.cleanupInterval = setInterval(() => {
-      this.cleanupIdleSessions();
+      this.cleanupIdleSessions().catch((error) => {
+        logger.error('Error during scheduled session cleanup:', error);
+      });
     }, 30000); // Check every 30 seconds
 
     logger.info(`SessionPool initialized with ${minSize} sessions`);
@@ -143,7 +145,7 @@ export class SessionPool {
     }
   }
 
-  private cleanupIdleSessions(): void {
+  private async cleanupIdleSessions(): Promise<void> {
     const now = Date.now();
     const maxIdleTime = this.config.maxIdleTime || 60000;
     const minSize = this.config.minPoolSize || 1;
@@ -155,8 +157,8 @@ export class SessionPool {
         this.pool.length > minSize
     );
 
-    // Use Promise.all to properly handle async operations
-    Promise.all(
+    // Properly await async operations
+    await Promise.all(
       sessionsToRemove.map(async (ps) => {
         try {
           await ps.session.close();
@@ -169,15 +171,13 @@ export class SessionPool {
           logger.error('Error closing idle session:', error);
         }
       })
-    ).catch((error) => {
-      logger.error('Error during session cleanup:', error);
-    });
+    );
   }
 
-  async executeQueryStatement(sql: string): Promise<QueryResult> {
+  async executeQueryStatement(sql: string, timeoutMs: number = 60000): Promise<QueryResult> {
     const session = await this.getSession();
     try {
-      return await session.executeQueryStatement(sql);
+      return await session.executeQueryStatement(sql, timeoutMs);
     } finally {
       this.releaseSession(session);
     }

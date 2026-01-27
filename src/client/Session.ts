@@ -58,7 +58,7 @@ export class Session {
     await this.connection.close();
   }
 
-  async executeQueryStatement(sql: string): Promise<QueryResult> {
+  async executeQueryStatement(sql: string, timeoutMs: number = 60000): Promise<QueryResult> {
     logger.debug(`Executing query: ${sql}`);
 
     const client = this.connection.getClient();
@@ -70,7 +70,7 @@ export class Session {
       statement: sql,
       statementId: statementId,
       fetchSize: this.config.fetchSize,
-      timeout: 0,
+      timeout: timeoutMs,
       enableRedirectQuery: true,
       jdbcQuery: true,
     });
@@ -193,11 +193,13 @@ export class Session {
         return Buffer.from(new Int32Array(values).buffer);
       case 2: // INT64
         return Buffer.from(new BigInt64Array(values.map(BigInt)).buffer);
-      case 3: // FLOAT
+      case 3: { // FLOAT
         return Buffer.from(new Float32Array(values).buffer);
-      case 4: // DOUBLE
+      }
+      case 4: { // DOUBLE
         return Buffer.from(new Float64Array(values).buffer);
-      case 5: // TEXT
+      }
+      case 5: { // TEXT
         const strBuffers = values.map((v) => {
           const str = String(v);
           const len = Buffer.alloc(4);
@@ -205,6 +207,7 @@ export class Session {
           return Buffer.concat([len, Buffer.from(str, 'utf8')]);
         });
         return Buffer.concat(strBuffers);
+      }
       default:
         throw new Error(`Unsupported data type: ${dataType}`);
     }
@@ -278,8 +281,8 @@ export class Session {
 
   private async parseDataSet(
     dataset: any,
-    columnCount: number,
-    dataTypes: string[]
+    _columnCount: number,
+    _dataTypes: string[]
   ): Promise<any[][]> {
     const rows: any[][] = [];
 
