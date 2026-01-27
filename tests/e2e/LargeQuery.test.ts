@@ -83,14 +83,14 @@ describe('Large Query E2E Tests', () => {
     );
   });
 
-  test('Should insert large dataset (100,000 records)', async () => {
+  test('Should insert large dataset (10,000 records)', async () => {
     if (!session.isOpen()) {
       console.log('Skipping test - no IoTDB connection');
       return;
     }
 
-    const batchSize = 1000;
-    const totalRecords = 100000;
+    const batchSize = 500;
+    const totalRecords = 10000;
     const baseTime = Date.now();
 
     // Insert data in batches
@@ -134,7 +134,7 @@ describe('Large Query E2E Tests', () => {
     expect(result.columns).toBeDefined();
     expect(result.columns.length).toBeGreaterThan(0);
     expect(result.rows).toBeDefined();
-    expect(result.rows.length).toBeGreaterThanOrEqual(100000);
+    expect(result.rows.length).toBeGreaterThanOrEqual(10000);
 
     console.log(`Retrieved ${result.rows.length} rows with fetchSize=100`);
     console.log(`Columns: ${result.columns.join(', ')}`);

@@ -38,6 +38,12 @@ services:
       - cn_seed_config_node=iotdb-confignode-1:10710
       - schema_replication_factor=3
       - data_replication_factor=3
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+        reservations:
+          memory: 192M
 
   # ConfigNode 2
   iotdb-confignode-2:
@@ -61,6 +67,12 @@ services:
       - cn_seed_config_node=iotdb-confignode-1:10710
       - schema_replication_factor=3
       - data_replication_factor=3
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+        reservations:
+          memory: 192M
 
   # ConfigNode 3
   iotdb-confignode-3:
@@ -86,6 +98,12 @@ services:
       - cn_seed_config_node=iotdb-confignode-1:10710
       - schema_replication_factor=3
       - data_replication_factor=3
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+        reservations:
+          memory: 192M
 
   # DataNode 1
   iotdb-datanode-1:
@@ -112,6 +130,12 @@ services:
       - dn_rpc_port=6667
       - schema_replication_factor=3
       - data_replication_factor=3
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+        reservations:
+          memory: 384M
 
   # DataNode 2
   iotdb-datanode-2:
@@ -140,6 +164,12 @@ services:
       - dn_rpc_port=6667
       - schema_replication_factor=3
       - data_replication_factor=3
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+        reservations:
+          memory: 384M
 
   # DataNode 3
   iotdb-datanode-3:
@@ -170,6 +200,12 @@ services:
       - dn_rpc_port=6667
       - schema_replication_factor=3
       - data_replication_factor=3
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+        reservations:
+          memory: 384M
 
 networks:
   iotdb-network:

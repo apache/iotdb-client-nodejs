@@ -36,6 +36,12 @@ services:
       - dn_rpc_address=iotdb-datanode
       - dn_internal_address=iotdb-datanode
       - dn_seed_config_node=iotdb-confignode:10710
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
   iotdb-confignode:
     image: apache/iotdb:2.0.6-confignode
@@ -53,6 +59,12 @@ services:
       - cn_internal_address=iotdb-confignode
       - cn_internal_port=10710
       - cn_seed_config_node=iotdb-confignode:10710
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
 networks:
   iotdb-network:
