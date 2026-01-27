@@ -1,0 +1,74 @@
+name: E2E Tests (1C1D)
+
+on:
+  push:
+    branches: [ main, dev/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  e2e-1c1d:
+    name: E2E Test with 1 ConfigNode and 1 DataNode
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Create test results directory
+        run: mkdir -p test-results
+
+      - name: Start IoTDB with Docker Compose
+        run: |
+          docker compose -f docker-compose-1c1d.yml up -d
+          echo "Waiting for IoTDB to be ready..."
+          sleep 45
+      
+      - name: Verify IoTDB ports are listening
+        run: |
+          echo "Checking IoTDB port 6667..."
+          ss -tuln | grep 6667 || (echo "ERROR: Port 6667 is not listening!" && exit 1)
+          echo "Port 6667 is listening ✓"
+          
+      - name: Show Docker container status
+        continue-on-error: true
+        run: |
+          echo "=== Docker containers status ==="
+          docker compose -f docker-compose-1c1d.yml ps
+          echo ""
+          echo "=== Recent logs from iotdb-datanode ==="
+          docker compose -f docker-compose-1c1d.yml logs --tail=50 iotdb-datanode
+          
+      - name: Run E2E Tests
+        env:
+          IOTDB_HOST: localhost
+          IOTDB_PORT: 6667
+          IOTDB_USER: root
+          IOTDB_PASSWORD: root
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee test-results/test-output.log
+          
+      - name: Stop and clean up Docker Compose
+        if: always()
+        run: |
+          docker compose -f docker-compose-1c1d.yml down -v
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results-1c1d
+          path: test-results/

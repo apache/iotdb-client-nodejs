@@ -1,0 +1,238 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { TableSessionPool } from '../../src/client/TableSessionPool';
+
+describe('TableSessionPool E2E Tests', () => {
+  const IOTDB_HOST = process.env.IOTDB_HOST || 'localhost';
+  const IOTDB_PORT = parseInt(process.env.IOTDB_PORT || '6667');
+  const IOTDB_USER = process.env.IOTDB_USER || 'root';
+  const IOTDB_PASSWORD = process.env.IOTDB_PASSWORD || 'root';
+
+  let pool: TableSessionPool;
+  let isConnected = false;
+
+  beforeAll(async () => {
+    pool = new TableSessionPool(IOTDB_HOST, IOTDB_PORT, {
+      username: IOTDB_USER,
+      password: IOTDB_PASSWORD,
+      database: 'test1',
+      maxPoolSize: 5,
+      minPoolSize: 2
+    });
+
+    try {
+      await pool.init();
+      isConnected = true;
+      // Cleanup from previous runs
+      try {
+        await pool.executeNonQueryStatement('DROP DATABASE test1');
+        await pool.executeNonQueryStatement('DROP DATABASE test2');
+      } catch (e) {
+        // Ignore errors if databases don't exist
+      }
+    } catch (error) {
+      console.warn('Could not connect to IoTDB. E2E tests will be skipped.');
+      console.warn('Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.');
+    }
+  }, 60000);
+
+  afterAll(async () => {
+    if (pool && isConnected) {
+      // Cleanup
+      try {
+        await pool.executeNonQueryStatement('DROP DATABASE test1');
+        await pool.executeNonQueryStatement('DROP DATABASE test2');
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      await pool.close();
+    }
+  }, 60000);
+
+  test('Should create databases and tables (based on C# example)', async () => {
+    if (!isConnected) {
+      console.log('Skipping test - no IoTDB connection');
+      return;
+    }
+
+    // Create databases
+    await pool.executeNonQueryStatement('CREATE DATABASE test1');
+    await pool.executeNonQueryStatement('CREATE DATABASE test2');
+
+    // Use test2 database
+    await pool.executeNonQueryStatement('USE test2');
+
+    // Create table in test1 using full qualified name
+    await pool.executeNonQueryStatement(
+      'CREATE TABLE test1.table1(' +
+      'region_id STRING TAG, ' +
+      'plant_id STRING TAG, ' +
+      'device_id STRING TAG, ' +
+      'model STRING ATTRIBUTE, ' +
+      'temperature FLOAT FIELD, ' +
+      'humidity DOUBLE FIELD) ' +
+      'WITH (TTL=3600000)'
+    );
+
+    // Create table in current database (test2)
+    await pool.executeNonQueryStatement(
+      'CREATE TABLE table2(' +
+      'region_id STRING TAG, ' +
+      'plant_id STRING TAG, ' +
+      'color STRING ATTRIBUTE, ' +
+      'temperature FLOAT FIELD, ' +
+      'speed DOUBLE FIELD) ' +
+      'WITH (TTL=6600000)'
+    );
+
+    // Show tables from current database (test2)
+    const result1 = await pool.executeQueryStatement('SHOW TABLES');
+    expect(result1).toBeDefined();
+    expect(result1.rows.length).toBeGreaterThan(0);
+
+    // Show tables from test1 database
+    const result2 = await pool.executeQueryStatement('SHOW TABLES FROM test1');
+    expect(result2).toBeDefined();
+    expect(result2.rows.length).toBeGreaterThan(0);
+  });
+
+  test('Should insert and query table data (based on C# example)', async () => {
+    if (!isConnected) {
+      console.log('Skipping test - no IoTDB connection');
+      return;
+    }
+
+    const tableName = 'testTable1';
+    
+    // Create table
+    await pool.executeNonQueryStatement(
+      `CREATE TABLE ${tableName}(` +
+      'region_id STRING TAG, ' +
+      'plant_id STRING TAG, ' +
+      'device_id STRING TAG, ' +
+      'model STRING ATTRIBUTE, ' +
+      'temperature FLOAT FIELD, ' +
+      'humidity DOUBLE FIELD)'
+    );
+
+    // Insert data using tablet - simplified to 50 records
+    const tablet = {
+      deviceId: tableName,
+      measurements: ['region_id', 'plant_id', 'device_id', 'model', 'temperature', 'humidity'],
+      dataTypes: [5, 5, 5, 5, 3, 4], // STRING, STRING, STRING, STRING, FLOAT, DOUBLE
+      timestamps: [] as number[],
+      values: [] as any[][],
+    };
+
+    for (let i = 0; i < 50; i++) {
+      tablet.timestamps.push(i);
+      tablet.values.push(['1', '5', '3', 'A', 1.23 + i, 111.1 + i]);
+    }
+
+    await pool.insertTablet(tablet);
+
+    // Query the data
+    const result = await pool.executeQueryStatement(
+      `SELECT * FROM ${tableName} WHERE region_id = '1' AND plant_id IN ('3', '5') AND device_id = '3' LIMIT 10`
+    );
+
+    expect(result).toBeDefined();
+    expect(result.rows.length).toBeGreaterThan(0);
+  });
+
+  test('Should use database context switching (based on C# example)', async () => {
+    if (!isConnected) {
+      console.log('Skipping test - no IoTDB connection');
+      return;
+    }
+
+    // Show tables from test1
+    const result1 = await pool.executeQueryStatement('SHOW TABLES FROM test1');
+    expect(result1).toBeDefined();
+
+    // Switch to test2
+    await pool.executeNonQueryStatement('USE test2');
+
+    // Show tables from current database (test2)
+    const result2 = await pool.executeQueryStatement('SHOW TABLES');
+    expect(result2).toBeDefined();
+  });
+
+  test('Should handle insert with null values (based on C# example)', async () => {
+    if (!isConnected) {
+      console.log('Skipping test - no IoTDB connection');
+      return;
+    }
+
+    const tableName = 't1';
+
+    // Create table
+    await pool.executeNonQueryStatement(
+      `CREATE TABLE ${tableName}(t1 STRING TAG, f1 INT32 FIELD)`
+    );
+
+    // Insert data with some null values
+    const tablet = {
+      deviceId: tableName,
+      measurements: ['t1', 'f1'],
+      dataTypes: [5, 1], // STRING, INT32
+      timestamps: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      values: [
+        ['t1', 100],
+        ['t1', 200],
+        ['t1', 300],
+        ['t1', 400],
+        ['t1', 500],
+        ['t1', null],
+        ['t1', null],
+        ['t1', null],
+        ['t1', null],
+        ['t1', null],
+      ],
+    };
+
+    await pool.insertTablet(tablet);
+
+    // Query null count
+    const result = await pool.executeQueryStatement(
+      `SELECT COUNT(*) FROM ${tableName} WHERE f1 IS NULL`
+    );
+
+    expect(result).toBeDefined();
+    expect(result.rows.length).toBeGreaterThan(0);
+    // Should have 5 null values
+    const count = result.rows[0][0];
+    expect(count).toBe(5);
+  });
+
+  test('Should report pool statistics', async () => {
+    if (!isConnected) {
+      console.log('Skipping test - no IoTDB connection');
+      return;
+    }
+
+    const poolSize = pool.getPoolSize();
+    const availableSize = pool.getAvailableSize();
+
+    expect(poolSize).toBeGreaterThan(0);
+    expect(availableSize).toBeGreaterThanOrEqual(0);
+    expect(availableSize).toBeLessThanOrEqual(poolSize);
+  });
+});

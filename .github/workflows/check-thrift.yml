@@ -1,0 +1,118 @@
+name: Check Thrift Definitions
+
+on:
+  schedule:
+    # Run every Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check-thrift:
+    name: Check for Thrift Definition Changes
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Thrift compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y thrift-compiler
+
+      - name: Clone Apache IoTDB master
+        run: |
+          git clone --depth 1 --branch master https://github.com/apache/iotdb.git /tmp/iotdb
+
+      - name: Check for Thrift changes
+        id: check_changes
+        run: |
+          # Compare current Thrift files with master
+          diff -q thrift/client.thrift /tmp/iotdb/iotdb-protocol/thrift-datanode/src/main/thrift/client.thrift > /dev/null
+          CLIENT_CHANGED=$?
+          
+          diff -q thrift/common.thrift /tmp/iotdb/iotdb-protocol/thrift-commons/src/main/thrift/common.thrift > /dev/null
+          COMMON_CHANGED=$?
+          
+          if [ $CLIENT_CHANGED -ne 0 ] || [ $COMMON_CHANGED -ne 0 ]; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            echo "Thrift definition changes detected!"
+          else
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+            echo "No Thrift definition changes detected."
+          fi
+
+      - name: Copy updated Thrift files
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        run: |
+          cp /tmp/iotdb/iotdb-protocol/thrift-datanode/src/main/thrift/client.thrift thrift/
+          cp /tmp/iotdb/iotdb-protocol/thrift-commons/src/main/thrift/common.thrift thrift/
+
+      - name: Regenerate Thrift client
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        run: |
+          rm -rf src/thrift/generated/*
+          thrift --gen js:node -out src/thrift/generated thrift/client.thrift
+
+      - name: Install dependencies and build
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run tests
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        run: |
+          npm run test:unit
+
+      - name: Create Pull Request
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update Thrift definitions from IoTDB master'
+          title: 'Update Thrift definitions from Apache IoTDB master'
+          body: |
+            ## Thrift Definition Update
+            
+            This PR automatically updates the Thrift definitions from Apache IoTDB master branch.
+            
+            ### Changes
+            - Updated `thrift/client.thrift`
+            - Updated `thrift/common.thrift`
+            - Regenerated Node.js client code in `src/thrift/generated/`
+            
+            ### Verification
+            - ✅ Code builds successfully
+            - ✅ Unit tests pass
+            
+            Please review the changes and run E2E tests before merging.
+            
+            ---
+            *This PR was automatically created by the scheduled Thrift update workflow.*
+          branch: auto/update-thrift-definitions
+          delete-branch: true
+          labels: |
+            automated
+            dependencies
+            thrift
+
+      - name: Comment on failure
+        if: failure() && steps.check_changes.outputs.changes_detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Failed to update Thrift definitions',
+              body: 'The scheduled Thrift definition update workflow failed. Please check the workflow run for details.',
+              labels: ['bug', 'automated']
+            })

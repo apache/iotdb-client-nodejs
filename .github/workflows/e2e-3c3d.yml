@@ -1,0 +1,85 @@
+name: E2E Tests (3C3D)
+
+on:
+  push:
+    branches: [ main, dev/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  e2e-3c3d:
+    name: E2E Test with 3 ConfigNodes and 3 DataNodes
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Create test results directory
+        run: mkdir -p test-results
+
+      - name: Start IoTDB Cluster with Docker Compose
+        run: |
+          docker compose -f docker-compose-3c3d.yml up -d
+          echo "Waiting for IoTDB cluster to be ready..."
+          sleep 75
+      
+      - name: Verify IoTDB ports are listening
+        run: |
+          echo "Checking IoTDB DataNode ports 6667, 6668, 6669..."
+          ss -tuln | grep 6667 || (echo "ERROR: Port 6667 is not listening!" && exit 1)
+          ss -tuln | grep 6668 || (echo "ERROR: Port 6668 is not listening!" && exit 1)
+          ss -tuln | grep 6669 || (echo "ERROR: Port 6669 is not listening!" && exit 1)
+          echo "All three DataNode ports (6667, 6668, 6669) are listening ✓"
+          
+      - name: Show Docker container status
+        continue-on-error: true
+        run: |
+          echo "=== Docker containers status ==="
+          docker compose -f docker-compose-3c3d.yml ps
+          echo ""
+          echo "=== Recent logs from iotdb-datanode1 ==="
+          docker compose -f docker-compose-3c3d.yml logs --tail=30 iotdb-datanode1
+          echo ""
+          echo "=== Recent logs from iotdb-datanode2 ==="
+          docker compose -f docker-compose-3c3d.yml logs --tail=30 iotdb-datanode2
+          echo ""
+          echo "=== Recent logs from iotdb-datanode3 ==="
+          docker compose -f docker-compose-3c3d.yml logs --tail=30 iotdb-datanode3
+          
+      - name: Run E2E Tests
+        env:
+          IOTDB_HOST: localhost
+          IOTDB_PORT: 6667
+          IOTDB_PORT_2: 6668
+          IOTDB_PORT_3: 6669
+          IOTDB_USER: root
+          IOTDB_PASSWORD: root
+          MULTI_NODE: 'true'
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee test-results/test-output.log
+          
+      - name: Stop and clean up Docker Compose
+        if: always()
+        run: |
+          docker compose -f docker-compose-3c3d.yml down -v
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results-3c3d
+          path: test-results/

@@ -1,0 +1,59 @@
+services:
+  iotdb-datanode:
+    image: apache/iotdb:2.0.6-datanode
+    container_name: iotdb-datanode
+    restart: always
+    depends_on:
+      iotdb-confignode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "ls", "/iotdb/data/datanode/system"]
+      interval: 10s
+      timeout: 60s
+      retries: 30
+      start_period: 30s
+    ports:
+      - "6667:6667"
+    networks:
+      - iotdb-network
+    environment:
+      - dn_rpc_address=iotdb-datanode
+      - dn_internal_address=iotdb-datanode
+      - dn_seed_config_node=iotdb-confignode:10710
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+        reservations:
+          memory: 384M
+    logging:
+      driver: "none"
+
+  iotdb-confignode:
+    image: apache/iotdb:2.0.6-confignode
+    container_name: iotdb-confignode
+    restart: always
+    healthcheck:
+      test: ["CMD", "ls", "/iotdb/data"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - iotdb-network
+    environment:
+      - cn_internal_address=iotdb-confignode
+      - cn_internal_port=10710
+      - cn_seed_config_node=iotdb-confignode:10710
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+        reservations:
+          memory: 192M
+    logging:
+      driver: "none"
+
+networks:
+  iotdb-network:
+    driver: bridge
