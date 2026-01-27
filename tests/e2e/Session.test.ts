@@ -152,7 +152,7 @@ describe('Session E2E Tests', () => {
     const badSession = new Session({
       host: 'invalid-host-that-does-not-exist',
       port: 9999,
-    }, 60000);
+    });
 
     await expect(badSession.open()).rejects.toThrow();
   }, 60000);

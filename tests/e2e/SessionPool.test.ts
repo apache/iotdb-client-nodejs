@@ -133,6 +133,12 @@ describe('SessionPool E2E Tests', () => {
   });
 
   test('Should support multi-node configuration', async () => {
+    // Skip this test in 1C1D setup - only run in 3C3D
+    if (!process.env.MULTI_NODE) {
+      console.log('Skipping multi-node test in 1C1D configuration');
+      return;
+    }
+
     const multiNodePool = new SessionPool(
       [IOTDB_HOST, 'localhost'],
       IOTDB_PORT,

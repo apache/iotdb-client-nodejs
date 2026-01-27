@@ -262,7 +262,7 @@ export class Session {
 
         const rows = await this.parseDataSet(
           response.queryDataSet,
-          response.queryDataSet.valueList.length,
+          response.queryDataSet?.valueList?.length || 0,
           []
         );
 

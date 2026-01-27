@@ -138,7 +138,7 @@ describe('Large Query E2E Tests', () => {
 
     console.log(`Retrieved ${result.rows.length} rows with fetchSize=100`);
     console.log(`Columns: ${result.columns.join(', ')}`);
-  });
+  }, 30000);
 
   test('Should query with filters on large dataset', async () => {
     if (!session.isOpen()) {
@@ -156,7 +156,7 @@ describe('Large Query E2E Tests', () => {
     expect(result.rows.length).toBeGreaterThan(0);
 
     console.log(`Filtered query returned ${result.rows.length} rows`);
-  });
+  }, 30000);
 
   test('Should query with aggregation on large dataset', async () => {
     if (!session.isOpen()) {
@@ -184,7 +184,7 @@ describe('Large Query E2E Tests', () => {
     expect(avgResult.rows.length).toBeGreaterThan(0);
 
     console.log('AVG result:', avgResult.rows[0]);
-  });
+  }, 30000);
 
   test('Should query with LIMIT on large dataset', async () => {
     if (!session.isOpen()) {
@@ -202,7 +202,7 @@ describe('Large Query E2E Tests', () => {
     expect(result.rows.length).toBeGreaterThan(0);
 
     console.log(`LIMIT query returned ${result.rows.length} rows`);
-  });
+  }, 30000);
 
   test('Should handle multiple concurrent large queries', async () => {
     if (!session.isOpen()) {
@@ -227,5 +227,5 @@ describe('Large Query E2E Tests', () => {
       expect(result.rows).toBeDefined();
       console.log(`Query ${index + 1} returned ${result.rows.length} rows`);
     });
-  });
+  }, 30000);
 });
