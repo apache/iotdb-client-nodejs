@@ -63,11 +63,12 @@ export class Session {
 
     const client = this.connection.getClient();
     const sessionId = this.connection.getSessionId();
+    const statementId = this.connection.getStatementId();
 
     const req = new ttypes.TSExecuteStatementReq({
       sessionId: sessionId,
       statement: sql,
-      statementId: 0,
+      statementId: statementId,
       fetchSize: this.config.fetchSize,
       timeout: 0,
       enableRedirectQuery: true,
@@ -101,11 +102,12 @@ export class Session {
 
     const client = this.connection.getClient();
     const sessionId = this.connection.getSessionId();
+    const statementId = this.connection.getStatementId();
 
     const req = new ttypes.TSExecuteStatementReq({
       sessionId: sessionId,
       statement: sql,
-      statementId: 0,
+      statementId: statementId,
     });
 
     return new Promise((resolve, reject) => {

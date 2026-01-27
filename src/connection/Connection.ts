@@ -30,6 +30,7 @@ export class Connection {
   private connection: thrift.Connection | null = null;
   private client: any = null;
   private sessionId: number | null = null;
+  private statementId: number | null = null;
   private isConnected: boolean = false;
 
   constructor(config: Config) {
@@ -84,6 +85,7 @@ export class Connection {
       this.client = thrift.createClient(IClientRPCService, this.connection);
 
       await this.openSession();
+      await this.requestStatementId();
       this.isConnected = true;
       logger.info('Connected successfully');
     } catch (error) {
@@ -115,6 +117,25 @@ export class Connection {
 
         this.sessionId = response.sessionId;
         logger.debug(`Session opened: ${this.sessionId}`);
+        resolve();
+      });
+    });
+  }
+
+  private async requestStatementId(): Promise<void> {
+    if (!this.sessionId) {
+      throw new Error('Session not open');
+    }
+
+    return new Promise((resolve, reject) => {
+      this.client.requestStatementId(this.sessionId, (err: Error, statementId: number) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        this.statementId = statementId;
+        logger.debug(`Statement ID requested: ${this.statementId}`);
         resolve();
       });
     });
@@ -167,6 +188,13 @@ export class Connection {
       throw new Error('Session is not open');
     }
     return this.sessionId;
+  }
+
+  getStatementId(): number {
+    if (!this.statementId) {
+      throw new Error('Statement ID not available');
+    }
+    return this.statementId;
   }
 
   isOpen(): boolean {
