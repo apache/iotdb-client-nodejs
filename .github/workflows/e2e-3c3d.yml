@@ -35,6 +35,29 @@ jobs:
           docker compose -f docker-compose-3c3d.yml up -d
           echo "Waiting for IoTDB cluster to be ready..."
           sleep 75
+      
+      - name: Verify IoTDB ports are listening
+        run: |
+          echo "Checking IoTDB DataNode ports 6667, 6668, 6669..."
+          ss -tuln | grep 6667 || (echo "ERROR: Port 6667 is not listening!" && exit 1)
+          ss -tuln | grep 6668 || (echo "ERROR: Port 6668 is not listening!" && exit 1)
+          ss -tuln | grep 6669 || (echo "ERROR: Port 6669 is not listening!" && exit 1)
+          echo "All three DataNode ports (6667, 6668, 6669) are listening ✓"
+          
+      - name: Show Docker container status
+        continue-on-error: true
+        run: |
+          echo "=== Docker containers status ==="
+          docker compose -f docker-compose-3c3d.yml ps
+          echo ""
+          echo "=== Recent logs from iotdb-datanode1 ==="
+          docker compose -f docker-compose-3c3d.yml logs --tail=30 iotdb-datanode1
+          echo ""
+          echo "=== Recent logs from iotdb-datanode2 ==="
+          docker compose -f docker-compose-3c3d.yml logs --tail=30 iotdb-datanode2
+          echo ""
+          echo "=== Recent logs from iotdb-datanode3 ==="
+          docker compose -f docker-compose-3c3d.yml logs --tail=30 iotdb-datanode3
           
       - name: Run E2E Tests
         env:
@@ -43,7 +66,7 @@ jobs:
           IOTDB_USER: root
           IOTDB_PASSWORD: root
         run: |
-          npm run test:e2e 2>&1 | tee test-results/test-output.log || true
+          npm run test:e2e 2>&1 | tee test-results/test-output.log
           
       - name: Stop and clean up Docker Compose
         if: always()
