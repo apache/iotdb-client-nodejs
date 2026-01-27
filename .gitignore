@@ -31,3 +31,6 @@ npm-debug.log*
 tmp/
 temp/
 *.tmp
+
+# IoTDB data directories (created by docker-compose)
+iotdb/

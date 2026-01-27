@@ -1,0 +1,62 @@
+version: '3.4'
+
+services:
+  iotdb-test:
+    build:
+      context: .
+      dockerfile: tests/e2e/Dockerfile
+    depends_on:
+      iotdb-datanode:
+        condition: service_healthy
+    environment:
+      - IOTDB_HOST=iotdb-datanode
+      - IOTDB_PORT=6667
+      - IOTDB_USER=root
+      - IOTDB_PASSWORD=root
+    networks:
+      - iotdb-network
+    command: ["npm", "run", "test:e2e"]
+
+  iotdb-datanode:
+    image: apache/iotdb:latest
+    container_name: iotdb-datanode
+    restart: always
+    depends_on:
+      iotdb-confignode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "ls", "/iotdb/data/datanode/system"]
+      interval: 10s
+      timeout: 60s
+      retries: 30
+      start_period: 30s
+    ports:
+      - "6667:6667"
+    networks:
+      - iotdb-network
+    environment:
+      - dn_rpc_address=iotdb-datanode
+      - dn_internal_address=iotdb-datanode
+      - dn_seed_config_node=iotdb-confignode:10710
+
+  iotdb-confignode:
+    image: apache/iotdb:latest
+    container_name: iotdb-confignode
+    restart: always
+    command: ["bash", "-c", "entrypoint.sh confignode"]
+    healthcheck:
+      test: ["CMD", "ls", "/iotdb/data"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - iotdb-network
+    environment:
+      - cn_internal_address=iotdb-confignode
+      - cn_internal_port=10710
+      - cn_seed_config_node=iotdb-confignode:10710
+
+networks:
+  iotdb-network:
+    driver: bridge
