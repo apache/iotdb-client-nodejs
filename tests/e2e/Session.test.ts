@@ -41,13 +41,13 @@ describe('Session E2E Tests', () => {
       console.warn('Could not connect to IoTDB. E2E tests will be skipped.');
       console.warn('Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.');
     }
-  });
+  }, 30000); // 30 second timeout for connection
 
   afterAll(async () => {
     if (session && session.isOpen()) {
       await session.close();
     }
-  });
+  }, 30000);
 
   test('Should open and close session', async () => {
     if (!session.isOpen()) {
@@ -56,7 +56,7 @@ describe('Session E2E Tests', () => {
     }
 
     expect(session.isOpen()).toBe(true);
-  });
+  }, 30000);
 
   test('Should execute non-query statement (CREATE DATABASE)', async () => {
     if (!session.isOpen()) {
@@ -73,7 +73,7 @@ describe('Session E2E Tests', () => {
         throw error;
       }
     }
-  });
+  }, 30000);
 
   test('Should execute non-query statement (CREATE TIMESERIES)', async () => {
     if (!session.isOpen()) {
@@ -92,7 +92,7 @@ describe('Session E2E Tests', () => {
         throw error;
       }
     }
-  });
+  }, 30000);
 
   test('Should execute query statement (SHOW DATABASES)', async () => {
     if (!session.isOpen()) {
@@ -107,7 +107,7 @@ describe('Session E2E Tests', () => {
     expect(Array.isArray(result.columns)).toBe(true);
     expect(result.rows).toBeDefined();
     expect(Array.isArray(result.rows)).toBe(true);
-  });
+  }, 30000);
 
   test('Should execute query statement (SHOW TIMESERIES)', async () => {
     if (!session.isOpen()) {
@@ -122,7 +122,7 @@ describe('Session E2E Tests', () => {
     expect(result).toBeDefined();
     expect(result.columns).toBeDefined();
     expect(result.dataTypes).toBeDefined();
-  });
+  }, 30000);
 
   test('Should insert tablet data', async () => {
     if (!session.isOpen()) {
@@ -148,14 +148,14 @@ describe('Session E2E Tests', () => {
       console.warn('Insert tablet failed:', error.message);
       // Some errors might be expected if schema doesn't match
     }
-  });
+  }, 30000);
 
   test('Should handle connection errors gracefully', async () => {
     const badSession = new Session({
       host: 'invalid-host-that-does-not-exist',
       port: 9999,
-    });
+    }, 30000);
 
     await expect(badSession.open()).rejects.toThrow();
-  });
+  }, 30000);
 });

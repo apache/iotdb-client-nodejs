@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy:thrift",
+    "copy:thrift": "mkdir -p dist/thrift/generated && cp -r src/thrift/generated/*.js dist/thrift/generated/",
     "test": "jest",
     "test:unit": "jest --testPathPattern=tests/unit",
     "test:e2e": "jest --testPathPattern=tests/e2e",

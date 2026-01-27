@@ -33,7 +33,7 @@ describe('SessionPool E2E Tests', () => {
       username: IOTDB_USER,
       password: IOTDB_PASSWORD,
       maxPoolSize: 5,
-      minPoolSize: 2,
+      minPoolSize: 2
     });
 
     try {
@@ -43,13 +43,13 @@ describe('SessionPool E2E Tests', () => {
       console.warn('Could not connect to IoTDB. E2E tests will be skipped.');
       console.warn('Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.');
     }
-  });
+  }, 30000);
 
   afterAll(async () => {
     if (pool && isConnected) {
       await pool.close();
     }
-  });
+  }, 30000);
 
   test('Should initialize pool with minimum connections', async () => {
     if (!isConnected) {

@@ -2,30 +2,13 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install thrift compiler
-RUN apk add --no-cache thrift
-
-# Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
-COPY jest.config.js ./
+# Copy everything
+COPY . .
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
-# Copy thrift files first
-COPY thrift/ ./thrift/
-
-# Generate thrift files
-RUN mkdir -p src/thrift/generated && \
-    thrift --gen js:node -out src/thrift/generated thrift/client.thrift && \
-    thrift --gen js:node -out src/thrift/generated thrift/common.thrift
-
-# Copy source and test files
-COPY src/ ./src/
-COPY tests/ ./tests/
-
-# Build the project
+# Build the project (this will copy thrift generated files to dist)
 RUN npm run build
 
 # Run E2E tests
