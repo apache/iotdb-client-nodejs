@@ -17,16 +17,17 @@
  * under the License.
  */
 
-import { SessionPool } from '../../src/client/SessionPool';
+import { SessionPool } from "../../src/client/SessionPool";
+import { TSDataType } from "../../src/utils/DataTypes";
 
-describe('Multi-Node E2E Tests', () => {
-  const IOTDB_HOST = process.env.IOTDB_HOST || 'localhost';
-  const IOTDB_PORT_1 = parseInt(process.env.IOTDB_PORT || '6667', 10);
-  const IOTDB_PORT_2 = parseInt(process.env.IOTDB_PORT_2 || '6668', 10);
-  const IOTDB_PORT_3 = parseInt(process.env.IOTDB_PORT_3 || '6669', 10);
-  const IOTDB_USER = process.env.IOTDB_USER || 'root';
-  const IOTDB_PASSWORD = process.env.IOTDB_PASSWORD || 'root';
-  const IS_MULTI_NODE = process.env.MULTI_NODE === 'true';
+describe("Multi-Node E2E Tests", () => {
+  const IOTDB_HOST = process.env.IOTDB_HOST || "localhost";
+  const IOTDB_PORT_1 = parseInt(process.env.IOTDB_PORT || "6667", 10);
+  const IOTDB_PORT_2 = parseInt(process.env.IOTDB_PORT_2 || "6668", 10);
+  const IOTDB_PORT_3 = parseInt(process.env.IOTDB_PORT_3 || "6669", 10);
+  const IOTDB_USER = process.env.IOTDB_USER || "root";
+  const IOTDB_PASSWORD = process.env.IOTDB_PASSWORD || "root";
+  const IS_MULTI_NODE = process.env.MULTI_NODE === "true";
 
   let pool1: SessionPool;
   let pool2: SessionPool;
@@ -36,7 +37,9 @@ describe('Multi-Node E2E Tests', () => {
   beforeAll(async () => {
     // Skip multi-node tests if not in multi-node environment
     if (!IS_MULTI_NODE) {
-      console.log('Skipping Multi-Node tests - not in multi-node environment (MULTI_NODE env var not set)');
+      console.log(
+        "Skipping Multi-Node tests - not in multi-node environment (MULTI_NODE env var not set)",
+      );
       return;
     }
 
@@ -46,7 +49,7 @@ describe('Multi-Node E2E Tests', () => {
     console.log(`  DataNode 1: ${IOTDB_HOST}:${IOTDB_PORT_1}`);
     console.log(`  DataNode 2: ${IOTDB_HOST}:${IOTDB_PORT_2}`);
     console.log(`  DataNode 3: ${IOTDB_HOST}:${IOTDB_PORT_3}`);
-    
+
     try {
       // Create three pools, each connected to a different DataNode
       pool1 = new SessionPool(IOTDB_HOST, IOTDB_PORT_1, {
@@ -55,14 +58,14 @@ describe('Multi-Node E2E Tests', () => {
         maxPoolSize: 5,
         minPoolSize: 2,
       });
-      
+
       pool2 = new SessionPool(IOTDB_HOST, IOTDB_PORT_2, {
         username: IOTDB_USER,
         password: IOTDB_PASSWORD,
         maxPoolSize: 5,
         minPoolSize: 2,
       });
-      
+
       pool3 = new SessionPool(IOTDB_HOST, IOTDB_PORT_3, {
         username: IOTDB_USER,
         password: IOTDB_PASSWORD,
@@ -73,12 +76,16 @@ describe('Multi-Node E2E Tests', () => {
       await pool1.init();
       await pool2.init();
       await pool3.init();
-      
+
       isConnected = true;
-      console.log(`Successfully connected to IoTDB cluster on ports ${IOTDB_PORT_1}, ${IOTDB_PORT_2}, ${IOTDB_PORT_3}`);
+      console.log(
+        `Successfully connected to IoTDB cluster on ports ${IOTDB_PORT_1}, ${IOTDB_PORT_2}, ${IOTDB_PORT_3}`,
+      );
     } catch (error) {
-      console.warn('Could not connect to IoTDB. Multi-node E2E tests will be skipped.');
-      console.warn('Error:', error);
+      console.warn(
+        "Could not connect to IoTDB. Multi-node E2E tests will be skipped.",
+      );
+      console.warn("Error:", error);
     }
   }, 60000);
 
@@ -88,57 +95,57 @@ describe('Multi-Node E2E Tests', () => {
     }
     if (isConnected) {
       try {
-        await pool1.executeNonQueryStatement('DROP DATABASE root.multinode_test');
+        await pool1.executeNonQueryStatement("DROP DATABASE root.test");
       } catch (error) {
         // Ignore cleanup errors
       }
-      
+
       // Close pools in parallel with timeout protection
-      await Promise.allSettled([
-        pool1.close(),
-        pool2.close(),
-        pool3.close()
-      ]);
+      await Promise.allSettled([pool1.close(), pool2.close(), pool3.close()]);
     }
   }, 90000); // Increased timeout for multi-node cleanup
 
-  test('Should initialize pools with connections to all three DataNodes', async () => {
+  test("Should initialize pools with connections to all three DataNodes", async () => {
     if (!IS_MULTI_NODE || !isConnected) {
-      console.log('Skipping test - not in multi-node environment or no IoTDB connection');
+      console.log(
+        "Skipping test - not in multi-node environment or no IoTDB connection",
+      );
       return;
     }
 
     expect(pool1.getPoolSize()).toBeGreaterThanOrEqual(2);
     expect(pool2.getPoolSize()).toBeGreaterThanOrEqual(2);
     expect(pool3.getPoolSize()).toBeGreaterThanOrEqual(2);
-    console.log(`Pools initialized: DataNode1=${pool1.getPoolSize()}, DataNode2=${pool2.getPoolSize()}, DataNode3=${pool3.getPoolSize()} connections`);
+    console.log(
+      `Pools initialized: DataNode1=${pool1.getPoolSize()}, DataNode2=${pool2.getPoolSize()}, DataNode3=${pool3.getPoolSize()} connections`,
+    );
   });
 
-  test('Should create database and timeseries on first node', async () => {
+  test("Should create database and timeseries on first node", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
     try {
-      await pool1.executeNonQueryStatement('CREATE DATABASE root.multinode_test');
+      await pool1.executeNonQueryStatement("CREATE DATABASE root.test");
     } catch (error: any) {
-      if (!error.message.includes('already exists')) {
+      if (!error.message.includes("already exists")) {
         throw error;
       }
     }
 
     await pool1.executeNonQueryStatement(
-      'CREATE TIMESERIES root.multinode_test.device1.temperature WITH DATATYPE=FLOAT'
+      "CREATE TIMESERIES root.test.device1.temperature WITH DATATYPE=FLOAT",
     );
     await pool1.executeNonQueryStatement(
-      'CREATE TIMESERIES root.multinode_test.device1.humidity WITH DATATYPE=FLOAT'
+      "CREATE TIMESERIES root.test.device1.humidity WITH DATATYPE=FLOAT",
     );
   });
 
-  test('Should handle concurrent load distributed across all three DataNodes', async () => {
+  test("Should handle concurrent load distributed across all three DataNodes", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
@@ -150,71 +157,83 @@ describe('Multi-Node E2E Tests', () => {
       // Insert to DataNode 1
       promises.push(
         pool1.insertTablet({
-          deviceId: 'root.multinode_test.device1',
-          measurements: ['temperature', 'humidity'],
-          dataTypes: [3, 3],
+          deviceId: "root.test.device1",
+          measurements: ["temperature", "humidity"],
+          dataTypes: [TSDataType.FLOAT, TSDataType.FLOAT],
           timestamps: [Date.now() + i * 1000],
           values: [[20 + i * 0.1, 60 + i * 0.2]],
-        })
+        }),
       );
 
       // Query from DataNode 2
       promises.push(
-        pool2.executeQueryStatement('SELECT * FROM root.multinode_test.device1 LIMIT 10')
+        pool2.executeQueryStatement("SELECT * FROM root.test.device1 LIMIT 10"),
       );
 
       // Insert to DataNode 3
       promises.push(
         pool3.insertTablet({
-          deviceId: 'root.multinode_test.device1',
-          measurements: ['temperature', 'humidity'],
-          dataTypes: [3, 3],
+          deviceId: "root.test.device1",
+          measurements: ["temperature", "humidity"],
+          dataTypes: [TSDataType.FLOAT, TSDataType.FLOAT],
           timestamps: [Date.now() + i * 1000 + 500],
           values: [[21 + i * 0.1, 61 + i * 0.2]],
-        })
+        }),
       );
     }
 
     const results = await Promise.all(promises);
     expect(results).toHaveLength(operationsPerNode * 3);
-    
-    console.log(`Completed ${operationsPerNode * 3} concurrent operations across 3 DataNodes`);
-    console.log(`Pool stats: DN1=${pool1.getPoolSize()}/${pool1.getAvailableSize()}, DN2=${pool2.getPoolSize()}/${pool2.getAvailableSize()}, DN3=${pool3.getPoolSize()}/${pool3.getAvailableSize()}`);
+
+    console.log(
+      `Completed ${operationsPerNode * 3} concurrent operations across 3 DataNodes`,
+    );
+    console.log(
+      `Pool stats: DN1=${pool1.getPoolSize()}/${pool1.getAvailableSize()}, DN2=${pool2.getPoolSize()}/${pool2.getAvailableSize()}, DN3=${pool3.getPoolSize()}/${pool3.getAvailableSize()}`,
+    );
   });
 
-  test('Should verify data replication across all DataNodes', async () => {
+  test("Should verify data replication across all DataNodes", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
     // Insert data through DataNode 1
     await pool1.insertTablet({
-      deviceId: 'root.multinode_test.device1',
-      measurements: ['temperature', 'humidity'],
-      dataTypes: [3, 3],
+      deviceId: "root.test.device1",
+      measurements: ["temperature", "humidity"],
+      dataTypes: [TSDataType.FLOAT, TSDataType.FLOAT],
       timestamps: [Date.now()],
       values: [[99.9, 99.9]],
     });
 
     // Wait a bit for replication
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Query from all three DataNodes - should see the same data
-    const result1 = await pool1.executeQueryStatement('SELECT COUNT(*) FROM root.multinode_test.device1');
-    const result2 = await pool2.executeQueryStatement('SELECT COUNT(*) FROM root.multinode_test.device1');
-    const result3 = await pool3.executeQueryStatement('SELECT COUNT(*) FROM root.multinode_test.device1');
+    const result1 = await pool1.executeQueryStatement(
+      "SELECT COUNT(*) FROM root.test.device1",
+    );
+    const result2 = await pool2.executeQueryStatement(
+      "SELECT COUNT(*) FROM root.test.device1",
+    );
+    const result3 = await pool3.executeQueryStatement(
+      "SELECT COUNT(*) FROM root.test.device1",
+    );
 
     expect(result1.rows.length).toBeGreaterThan(0);
     expect(result2.rows.length).toBeGreaterThan(0);
     expect(result3.rows.length).toBeGreaterThan(0);
-    
-    console.log(`Data replicated across all DataNodes - verified queries from ports 6667, 6668, 6669`);
+
+    console.log(
+      `Data replicated across all DataNodes - verified queries from ports 6667, 6668, 6669`,
+    );
   });
 
-  test('Should handle large batch inserts across multiple DataNodes', async () => {
+  test("Should handle large batch inserts across multiple DataNodes", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
@@ -230,25 +249,27 @@ describe('Multi-Node E2E Tests', () => {
 
     // Insert through different DataNodes
     await pool1.insertTablet({
-      deviceId: 'root.multinode_test.device1',
-      measurements: ['temperature', 'humidity'],
-      dataTypes: [3, 3],
+      deviceId: "root.test.device1",
+      measurements: ["temperature", "humidity"],
+      dataTypes: [TSDataType.FLOAT, TSDataType.FLOAT],
       timestamps,
       values,
     });
 
     // Verify data from different DataNode
     const result = await pool2.executeQueryStatement(
-      'SELECT COUNT(*) FROM root.multinode_test.device1'
+      "SELECT COUNT(*) FROM root.test.device1",
     );
 
     expect(result.rows.length).toBeGreaterThan(0);
-    console.log(`Inserted ${batchSize} records via DataNode1, queried via DataNode2`);
+    console.log(
+      `Inserted ${batchSize} records via DataNode1, queried via DataNode2`,
+    );
   });
 
-  test('Should maintain all pool healths under stress', async () => {
+  test("Should maintain all pool healths under stress", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
@@ -259,9 +280,9 @@ describe('Multi-Node E2E Tests', () => {
     // Execute many operations across all DataNodes
     const promises: Promise<any>[] = [];
     for (let i = 0; i < 30; i++) {
-      promises.push(pool1.executeQueryStatement('SHOW DATABASES'));
-      promises.push(pool2.executeQueryStatement('SHOW DATABASES'));
-      promises.push(pool3.executeQueryStatement('SHOW DATABASES'));
+      promises.push(pool1.executeQueryStatement("SHOW DATABASES"));
+      promises.push(pool2.executeQueryStatement("SHOW DATABASES"));
+      promises.push(pool3.executeQueryStatement("SHOW DATABASES"));
     }
 
     await Promise.all(promises);
@@ -270,25 +291,93 @@ describe('Multi-Node E2E Tests', () => {
     expect(pool1.getPoolSize()).toBeGreaterThanOrEqual(initialSize1);
     expect(pool2.getPoolSize()).toBeGreaterThanOrEqual(initialSize2);
     expect(pool3.getPoolSize()).toBeGreaterThanOrEqual(initialSize3);
-    console.log('All three pool healths maintained after stress test');
+    console.log("All three pool healths maintained after stress test");
   });
 
-  test('Should handle queries across all DataNodes simultaneously', async () => {
+  test("Should handle queries across all DataNodes simultaneously", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
     // Execute queries simultaneously on all three DataNodes
     const [result1, result2, result3] = await Promise.all([
-      pool1.executeQueryStatement('SELECT * FROM root.multinode_test.device1 LIMIT 5'),
-      pool2.executeQueryStatement('SELECT * FROM root.multinode_test.device1 LIMIT 5'),
-      pool3.executeQueryStatement('SELECT * FROM root.multinode_test.device1 LIMIT 5'),
+      pool1.executeQueryStatement("SELECT * FROM root.test.device1 LIMIT 5"),
+      pool2.executeQueryStatement("SELECT * FROM root.test.device1 LIMIT 5"),
+      pool3.executeQueryStatement("SELECT * FROM root.test.device1 LIMIT 5"),
     ]);
 
     expect(result1.rows.length).toBeGreaterThan(0);
     expect(result2.rows.length).toBeGreaterThan(0);
     expect(result3.rows.length).toBeGreaterThan(0);
-    console.log(`Simultaneous queries across 3 DataNodes: DN1=${result1.rows.length}, DN2=${result2.rows.length}, DN3=${result3.rows.length} rows`);
+    console.log(
+      `Simultaneous queries across 3 DataNodes: DN1=${result1.rows.length}, DN2=${result2.rows.length}, DN3=${result3.rows.length} rows`,
+    );
+  });
+
+  test("Should support nodeUrls configuration for multi-node setup", async () => {
+    if (!IS_MULTI_NODE) {
+      console.log("Skipping test - not in multi-node environment");
+      return;
+    }
+
+    // Create a pool using nodeUrls in string format (RECOMMENDED)
+    const nodeUrlsPool = new SessionPool({
+      nodeUrls: [
+        `${IOTDB_HOST}:${IOTDB_PORT_1}`,
+        `${IOTDB_HOST}:${IOTDB_PORT_2}`,
+        `${IOTDB_HOST}:${IOTDB_PORT_3}`,
+      ],
+      username: IOTDB_USER,
+      password: IOTDB_PASSWORD,
+      maxPoolSize: 6,
+      minPoolSize: 3,
+    });
+
+    try {
+      await nodeUrlsPool.init();
+      expect(nodeUrlsPool.getPoolSize()).toBeGreaterThanOrEqual(3);
+
+      // Execute a query to verify it works
+      const result = await nodeUrlsPool.executeQueryStatement("SHOW DATABASES");
+      expect(result.rows).toBeDefined();
+
+      console.log("nodeUrls string format configuration working correctly");
+    } finally {
+      await nodeUrlsPool.close();
+    }
+  });
+
+  test("Should support nodeUrls configuration in object format", async () => {
+    if (!IS_MULTI_NODE) {
+      console.log("Skipping test - not in multi-node environment");
+      return;
+    }
+
+    // Create a pool using nodeUrls in object format (also supported)
+    const nodeUrlsPool = new SessionPool({
+      nodeUrls: [
+        { host: IOTDB_HOST, port: IOTDB_PORT_1 },
+        { host: IOTDB_HOST, port: IOTDB_PORT_2 },
+        { host: IOTDB_HOST, port: IOTDB_PORT_3 },
+      ],
+      username: IOTDB_USER,
+      password: IOTDB_PASSWORD,
+      maxPoolSize: 6,
+      minPoolSize: 3,
+    });
+
+    try {
+      await nodeUrlsPool.init();
+      expect(nodeUrlsPool.getPoolSize()).toBeGreaterThanOrEqual(3);
+
+      // Execute a query to verify it works
+      const result = await nodeUrlsPool.executeQueryStatement("SHOW DATABASES");
+      expect(result.rows).toBeDefined();
+
+      console.log("nodeUrls object format configuration working correctly");
+    } finally {
+      await nodeUrlsPool.close();
+    }
   });
 });

@@ -18,7 +18,7 @@
  */
 
 import { Connection } from '../connection/Connection';
-import { Config, DEFAULT_CONFIG } from '../utils/Config';
+import { Config, DEFAULT_CONFIG, parseNodeUrls, EndPoint } from '../utils/Config';
 import { logger } from '../utils/Logger';
 
 const ttypes = require('../thrift/generated/client_types');
@@ -43,10 +43,32 @@ export class Session {
   protected connection: Connection;
 
   constructor(config: Config) {
-    if (!config.host || !config.port) {
-      throw new Error('Host and port are required');
+    // Validate config - either host/port or nodeUrls must be provided
+    if (!config.host && !config.nodeUrls) {
+      throw new Error('Either host/port or nodeUrls must be provided');
     }
-    this.config = { ...DEFAULT_CONFIG, ...config } as Config;
+    
+    if (config.host && !config.port) {
+      throw new Error('Port is required when host is provided');
+    }
+
+    if (config.nodeUrls && config.nodeUrls.length === 0) {
+      throw new Error('nodeUrls array cannot be empty');
+    }
+
+    // If nodeUrls is provided, parse and use the first node for single session
+    if (config.nodeUrls && config.nodeUrls.length > 0) {
+      // Parse nodeUrls if in string format
+      const endpoints: EndPoint[] = typeof config.nodeUrls[0] === 'string'
+        ? parseNodeUrls(config.nodeUrls as string[])
+        : config.nodeUrls as EndPoint[];
+      
+      const firstNode = endpoints[0];
+      this.config = { ...DEFAULT_CONFIG, ...config, host: firstNode.host, port: firstNode.port } as Config;
+    } else {
+      this.config = { ...DEFAULT_CONFIG, ...config } as Config;
+    }
+    
     this.connection = new Connection(this.config);
   }
 

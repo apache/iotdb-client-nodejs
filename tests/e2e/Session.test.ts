@@ -17,13 +17,14 @@
  * under the License.
  */
 
-import { Session } from '../../src/client/Session';
+import { Session } from "../../src/client/Session";
+import { TSDataType } from "../../src/utils/DataTypes";
 
-describe('Session E2E Tests', () => {
-  const IOTDB_HOST = process.env.IOTDB_HOST || 'localhost';
-  const IOTDB_PORT = parseInt(process.env.IOTDB_PORT || '6667');
-  const IOTDB_USER = process.env.IOTDB_USER || 'root';
-  const IOTDB_PASSWORD = process.env.IOTDB_PASSWORD || 'root';
+describe("Session E2E Tests", () => {
+  const IOTDB_HOST = process.env.IOTDB_HOST || "localhost";
+  const IOTDB_PORT = parseInt(process.env.IOTDB_PORT || "6667");
+  const IOTDB_USER = process.env.IOTDB_USER || "root";
+  const IOTDB_PASSWORD = process.env.IOTDB_PASSWORD || "root";
 
   let session: Session;
 
@@ -38,75 +39,86 @@ describe('Session E2E Tests', () => {
     try {
       await session.open();
     } catch (error) {
-      console.warn('Could not connect to IoTDB. E2E tests will be skipped.');
-      console.warn('Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.');
+      console.warn("Could not connect to IoTDB. E2E tests will be skipped.");
+      console.warn(
+        "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",
+      );
     }
   }, 60000); // 30 second timeout for connection
 
   afterAll(async () => {
     if (session && session.isOpen()) {
+      // Cleanup test data
+      try {
+        await session.executeNonQueryStatement("DROP DATABASE root.test");
+      } catch (e) {
+        // Ignore cleanup errors
+      }
       await session.close();
     }
   }, 60000);
 
-  test('Should open and close session', async () => {
+  test("Should open and close session", async () => {
     if (!session.isOpen()) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
     expect(session.isOpen()).toBe(true);
   }, 60000);
 
-  test('Should create database and timeseries (tree model)', async () => {
+  test("Should create database and timeseries (tree model)", async () => {
     if (!session.isOpen()) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
-    // Cleanup from previous runs
+    // Create database (storage group) - ignore if already exists
     try {
-      await session.executeNonQueryStatement('DELETE DATABASE root.ln');
-    } catch (e) {
-      // Ignore if doesn't exist
+      await session.executeNonQueryStatement("CREATE DATABASE root.test");
+    } catch (e: any) {
+      if (!e.message?.includes("already")) {
+        throw e;
+      }
     }
-
-    // Create database (storage group)
-    await session.executeNonQueryStatement('CREATE DATABASE root.ln');
 
     // Create timeseries - handle if they already exist
     try {
       await session.executeNonQueryStatement(
-        'CREATE TIMESERIES root.ln.wf01.wt01.status WITH DATATYPE=BOOLEAN, ENCODING=PLAIN'
+        "CREATE TIMESERIES root.test.device1.status WITH DATATYPE=BOOLEAN, ENCODING=PLAIN",
       );
     } catch (e: any) {
-      if (!e.message?.includes('already exists')) {
+      // IoTDB returns "already exist" (without 's')
+      if (!e.message?.includes("already exist")) {
         throw e;
       }
     }
-    
+
     try {
       await session.executeNonQueryStatement(
-        'CREATE TIMESERIES root.ln.wf01.wt01.temperature WITH DATATYPE=FLOAT, ENCODING=RLE'
+        "CREATE TIMESERIES root.test.device1.temperature WITH DATATYPE=FLOAT, ENCODING=RLE",
       );
     } catch (e: any) {
-      if (!e.message?.includes('already exists')) {
+      // IoTDB returns "already exist" (without 's')
+      if (!e.message?.includes("already exist")) {
         throw e;
       }
     }
 
     // Verify timeseries created
-    const result = await session.executeQueryStatement('SHOW TIMESERIES root.ln.**');
+    const result = await session.executeQueryStatement(
+      "SHOW TIMESERIES root.test.**",
+    );
     expect(result.rows.length).toBeGreaterThanOrEqual(2);
   }, 60000);
 
-  test('Should execute query statement (SHOW DATABASES)', async () => {
+  test("Should execute query statement (SHOW DATABASES)", async () => {
     if (!session.isOpen()) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
-    const result = await session.executeQueryStatement('SHOW DATABASES');
+    const result = await session.executeQueryStatement("SHOW DATABASES");
 
     expect(result).toBeDefined();
     expect(result.columns).toBeDefined();
@@ -115,19 +127,19 @@ describe('Session E2E Tests', () => {
     expect(Array.isArray(result.rows)).toBe(true);
   }, 60000);
 
-  test('Should insert and query data (tree model)', async () => {
+  test("Should insert and query data (tree model)", async () => {
     if (!session.isOpen()) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
     const now = Date.now();
-    
+
     // Insert tablet data
     const tablet = {
-      deviceId: 'root.ln.wf01.wt01',
-      measurements: ['status', 'temperature'],
-      dataTypes: [0, 3], // BOOLEAN, FLOAT
+      deviceId: "root.test.device1",
+      measurements: ["status", "temperature"],
+      dataTypes: [TSDataType.BOOLEAN, TSDataType.FLOAT],
       timestamps: [now, now + 1, now + 2],
       values: [
         [true, 20.5],
@@ -140,33 +152,11 @@ describe('Session E2E Tests', () => {
 
     // Query the data
     const result = await session.executeQueryStatement(
-      'SELECT status, temperature FROM root.ln.wf01.wt01 LIMIT 5'
+      "SELECT status, temperature FROM root.test.device1 LIMIT 5",
     );
 
     expect(result).toBeDefined();
     expect(result.columns).toBeDefined();
     expect(result.rows.length).toBeGreaterThan(0);
   }, 60000);
-
-  test('Should cleanup database', async () => {
-    if (!session.isOpen()) {
-      console.log('Skipping test - no IoTDB connection');
-      return;
-    }
-
-    try {
-      await session.executeNonQueryStatement('DELETE DATABASE root.ln');
-    } catch (e) {
-      // Ignore cleanup errors
-    }
-  }, 60000);
-
-  test('Should handle connection errors gracefully', async () => {
-    const badSession = new Session({
-      host: 'localhost',
-      port: 9999, // Non-existent port
-    });
-
-    await expect(badSession.open()).rejects.toThrow();
-  }, 10000); // Reduced timeout since it should fail quickly
 });

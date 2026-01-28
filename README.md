@@ -67,6 +67,30 @@ await session.insertTablet({
 await session.close();
 ```
 
+### Using Builder Pattern (Recommended)
+
+The Builder pattern provides a more elegant and fluent API for configuration:
+
+```typescript
+import { Session, ConfigBuilder } from 'iotdb-client-nodejs';
+
+// Build a session configuration
+const session = new Session(
+  new ConfigBuilder()
+    .host('localhost')
+    .port(6667)
+    .username('root')
+    .password('root')
+    .fetchSize(1024)
+    .timezone('UTC+8')
+    .build()
+);
+
+await session.open();
+// ... use session
+await session.close();
+```
+
 ### SessionPool Usage
 
 ```typescript
@@ -107,7 +131,104 @@ console.log('Available:', pool.getAvailableSize());
 await pool.close();
 ```
 
+### Explicit Session Management
+
+For more control, you can explicitly get and release sessions from the pool:
+
+```typescript
+import { SessionPool } from 'iotdb-client-nodejs';
+
+const pool = new SessionPool('localhost', 6667, {
+  username: 'root',
+  password: 'root',
+  maxPoolSize: 10,
+});
+
+await pool.init();
+
+// Get a session from the pool
+const session = await pool.getSession();
+
+try {
+  // Use the session for multiple operations
+  await session.executeNonQueryStatement('CREATE DATABASE root.test');
+  const result = await session.executeQueryStatement('SHOW DATABASES');
+  await session.insertTablet({
+    deviceId: 'root.test.device1',
+    measurements: ['temperature'],
+    dataTypes: [3],
+    timestamps: [Date.now()],
+    values: [[25.5]],
+  });
+} finally {
+  // Always release the session back to the pool
+  pool.releaseSession(session);
+}
+
+await pool.close();
+```
+
 ### Multi-Node Support
+
+#### Method 1: Using nodeUrls with String Format (Recommended)
+
+When nodes have different host:port combinations, use the `nodeUrls` configuration with string array format:
+
+```typescript
+import { SessionPool, PoolConfigBuilder } from 'iotdb-client-nodejs';
+
+// Using config object with string array (RECOMMENDED)
+const pool1 = new SessionPool({
+  nodeUrls: [
+    'node1.example.com:6667',
+    'node2.example.com:6668',
+    'node3.example.com:6669',
+  ],
+  username: 'root',
+  password: 'root',
+  maxPoolSize: 15,
+  minPoolSize: 3,
+});
+
+// Or using Builder pattern with string array
+const pool2 = new SessionPool(
+  new PoolConfigBuilder()
+    .nodeUrls([
+      'node1.example.com:6667',
+      'node2.example.com:6668',
+      'node3.example.com:6669',
+    ])
+    .username('root')
+    .password('root')
+    .maxPoolSize(15)
+    .minPoolSize(3)
+    .build()
+);
+
+await pool1.init();
+// Connections will be distributed across all nodes using round-robin
+```
+
+#### Method 2: Using nodeUrls with Object Format (Also Supported)
+
+You can also use the object format for `nodeUrls`:
+
+```typescript
+const pool = new SessionPool({
+  nodeUrls: [
+    { host: 'node1.example.com', port: 6667 },
+    { host: 'node2.example.com', port: 6668 },
+    { host: 'node3.example.com', port: 6669 },
+  ],
+  username: 'root',
+  password: 'root',
+  maxPoolSize: 15,
+});
+```
+
+#### Method 3: Traditional API (For Same Port)
+
+When all nodes share the same port:
 
 ```typescript
 import { SessionPool } from 'iotdb-client-nodejs';
@@ -172,6 +293,66 @@ await tablePool.close();
 
 ## API Reference
 
+### Configuration Builders
+
+#### ConfigBuilder
+
+Fluent API for building Session configurations:
+
+```typescript
+import { ConfigBuilder } from 'iotdb-client-nodejs';
+
+const config = new ConfigBuilder()
+  .host('localhost')
+  .port(6667)
+  .username('root')
+  .password('root')
+  .database('mydb')
+  .timezone('UTC+8')
+  .fetchSize(2048)
+  .enableSSL(false)
+  .build();
+```
+
+**Methods:**
+- `host(host: string): this` - Set the host
+- `port(port: number): this` - Set the port
+- `nodeUrls(nodeUrls: EndPoint[]): this` - Set multiple node URLs
+- `username(username: string): this` - Set the username
+- `password(password: string): this` - Set the password
+- `database(database: string): this` - Set the database
+- `timezone(timezone: string): this` - Set the timezone
+- `fetchSize(fetchSize: number): this` - Set the fetch size
+- `enableSSL(enable: boolean): this` - Enable or disable SSL
+- `sslOptions(sslOptions: SSLOptions): this` - Set SSL options
+- `build(): Config` - Build and return the configuration
+
+#### PoolConfigBuilder
+
+Fluent API for building SessionPool configurations (extends ConfigBuilder):
+
+```typescript
+import { PoolConfigBuilder } from 'iotdb-client-nodejs';
+
+const config = new PoolConfigBuilder()
+  .host('localhost')
+  .port(6667)
+  .username('root')
+  .password('root')
+  .maxPoolSize(20)
+  .minPoolSize(5)
+  .maxIdleTime(30000)
+  .waitTimeout(45000)
+  .build();
+```
+
+**Additional Methods:**
+- `maxPoolSize(size: number): this` - Set maximum pool size
+- `minPoolSize(size: number): this` - Set minimum pool size
+- `maxIdleTime(time: number): this` - Set maximum idle time (ms)
+- `waitTimeout(timeout: number): this` - Set wait timeout (ms)
+- `build(): PoolConfig` - Build and return the pool configuration
+
 ### Data Types
 
 IoTDB Node.js client supports all IoTDB data types including BOOLEAN, INT32, INT64, FLOAT, DOUBLE, TEXT, BLOB, STRING, DATE, and TIMESTAMP. See [DATA_TYPES.md](./DATA_TYPES.md) for comprehensive documentation on:
@@ -183,9 +364,20 @@ IoTDB Node.js client supports all IoTDB data types including BOOLEAN, INT32, INT
 ### Session
 
 #### Constructor
+
+**Option 1: Using config object**
 ```typescript
-new Session(config: Partial<Config>)
+new Session(config: Config)
 ```
+
+**Option 2: Using Builder pattern** (Recommended)
+```typescript
+new Session(new ConfigBuilder()...build())
+```
+
+The config must include either:
+- `host` and `port` for single node connection
+- `nodeUrls` for multi-node connection (uses first node)
 
 #### Methods
 - `async open(): Promise<void>` - Open the session
@@ -198,30 +390,58 @@ new Session(config: Partial<Config>)
 ### SessionPool
 
 #### Constructor
+
+**Option 1: Traditional API** (Backward compatible)
 ```typescript
 new SessionPool(hosts: string | string[], port: number, config?: Partial<PoolConfig>)
 ```
 
+**Option 2: Using config object with nodeUrls**
+```typescript
+new SessionPool(config: PoolConfig)
+```
+
+**Option 3: Using Builder pattern** (Recommended)
+```typescript
+new SessionPool(new PoolConfigBuilder()...build())
+```
+
 #### Methods
+
+**Connection Management:**
 - `async init(): Promise<void>` - Initialize the pool
 - `async close(): Promise<void>` - Close all connections
+
+**Automatic Session Management:**
 - `async executeQueryStatement(sql: string, timeoutMs?: number): Promise<QueryResult>` - Execute a query with optional timeout (default: 60000ms)
 - `async executeNonQueryStatement(sql: string): Promise<void>` - Execute a non-query statement
 - `async insertTablet(tablet: Tablet): Promise<void>` - Insert tablet data
+
+**Explicit Session Management:**
+- `async getSession(): Promise<Session>` - Get a session from the pool (must be released)
+- `releaseSession(session: Session): void` - Release a session back to the pool
+
+**Pool Statistics:**
 - `getPoolSize(): number` - Get current pool size
 - `getAvailableSize(): number` - Get available connections
+- `getInUseSize(): number` - Get number of sessions currently in use
 
 ### TableSessionPool
 
-Same as SessionPool but optimized for table model operations. All query methods support the same timeout parameter (default: 60000ms).
+Same as SessionPool but optimized for table model operations. Automatically executes `USE DATABASE` when configured with a database. All query methods support the same timeout parameter (default: 60000ms).
+
+#### Constructor
+
+Same constructor options as SessionPool.
 
 ### Types
 
 #### Config
 ```typescript
 interface Config {
-  host: string;
-  port: number;
+  host?: string;
+  port?: number;
+  nodeUrls?: string[] | EndPoint[];  // String array format: ["host1:6667", "host2:6668"]
   username?: string;
   password?: string;
   database?: string;
@@ -229,6 +449,18 @@ interface Config {
   fetchSize?: number;
   enableSSL?: boolean;
   sslOptions?: SSLOptions;
+}
+```
+
+**Note:** Either `host`/`port` OR `nodeUrls` must be provided. 
+- Use `nodeUrls` in string array format (e.g., `["host1:6667", "host2:6668"]`) for nodes with different ports (RECOMMENDED)
+- Object format `[{ host, port }]` is also supported for backward compatibility
+
+#### EndPoint
+```typescript
+interface EndPoint {
+  host: string;
+  port: number;
 }
 ```
 
@@ -273,6 +505,98 @@ When using `insertTablet`, specify data types using these constants:
 - `3` - FLOAT
 - `4` - DOUBLE
 - `5` - TEXT
+
+## Migration Guide
+
+### Upgrading to the New API
+
+The new version maintains full backward compatibility while adding new features. No changes are required for existing code, but you may want to adopt the new features:
+
+#### Multi-Node with Different Ports
+
+**Old way** (still works, but limited to same port):
+```typescript
+const pool = new SessionPool(
+  ['node1', 'node2', 'node3'],
+  6667,
+  { username: 'root', password: 'root' }
+);
+```
+
+**New way** (supports different ports per node with string format - RECOMMENDED):
+```typescript
+const pool = new SessionPool({
+  nodeUrls: [
+    'node1:6667',
+    'node2:6668',
+    'node3:6669',
+  ],
+  username: 'root',
+  password: 'root',
+});
+```
+
+**Alternative** (object format also supported):
+```typescript
+const pool = new SessionPool({
+  nodeUrls: [
+    { host: 'node1', port: 6667 },
+    { host: 'node2', port: 6668 },
+    { host: 'node3', port: 6669 },
+  ],
+  username: 'root',
+  password: 'root',
+});
+```
+
+#### Using Builder Pattern
+
+**Old way** (still works):
+```typescript
+const session = new Session({
+  host: 'localhost',
+  port: 6667,
+  username: 'root',
+  password: 'root',
+  fetchSize: 2048,
+});
+```
+
+**New way** (more fluent):
+```typescript
+import { ConfigBuilder } from 'iotdb-client-nodejs';
+
+const session = new Session(
+  new ConfigBuilder()
+    .host('localhost')
+    .port(6667)
+    .username('root')
+    .password('root')
+    .fetchSize(2048)
+    .build()
+);
+```
+
+#### Explicit Session Management
+
+**Old way** (still works):
+```typescript
+// Pool automatically manages sessions
+const result = await pool.executeQueryStatement('SELECT ...');
+```
+
+**New way** (more control):
+```typescript
+// Explicitly get and release sessions
+const session = await pool.getSession();
+try {
+  const result1 = await session.executeQueryStatement('SELECT ...');
+  const result2 = await session.executeQueryStatement('SELECT ...');
+  // ... multiple operations with same session
+} finally {
+  pool.releaseSession(session);
+}
+```
 
 ## Development
 

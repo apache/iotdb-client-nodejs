@@ -27,11 +27,11 @@ import { BaseSessionPool } from './BaseSessionPool';
  */
 export class TableSessionPool extends BaseSessionPool {
   constructor(
-    hosts: string | string[],
-    port: number,
-    config: Partial<PoolConfig> = {}
+    hostsOrConfig: string | string[] | PoolConfig,
+    port?: number,
+    config?: Partial<PoolConfig>
   ) {
-    super(hosts, port, config);
+    super(hostsOrConfig, port, config);
   }
 
   protected getPoolName(): string {
