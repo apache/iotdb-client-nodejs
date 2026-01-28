@@ -17,9 +17,14 @@
  * under the License.
  */
 
-import { Session, QueryResult, Tablet } from './Session';
-import { PoolConfig, DEFAULT_POOL_CONFIG, EndPoint, parseNodeUrls } from '../utils/Config';
-import { logger } from '../utils/Logger';
+import { Session, QueryResult, Tablet } from "./Session";
+import {
+  PoolConfig,
+  DEFAULT_POOL_CONFIG,
+  EndPoint,
+  parseNodeUrls,
+} from "../utils/Config";
+import { logger } from "../utils/Logger";
 
 interface PooledSession {
   session: Session;
@@ -42,41 +47,48 @@ export abstract class BaseSessionPool {
   constructor(
     hostsOrConfig: string | string[] | PoolConfig,
     port?: number,
-    config?: Partial<PoolConfig>
+    config?: Partial<PoolConfig>,
   ) {
     // Handle different constructor signatures for backward compatibility
-    if (typeof hostsOrConfig === 'object' && !Array.isArray(hostsOrConfig)) {
+    if (typeof hostsOrConfig === "object" && !Array.isArray(hostsOrConfig)) {
       // New format: constructor(config: PoolConfig)
       const poolConfig = hostsOrConfig as PoolConfig;
       this.config = { ...DEFAULT_POOL_CONFIG, ...poolConfig } as PoolConfig;
-      
+
       if (poolConfig.nodeUrls) {
         if (poolConfig.nodeUrls.length === 0) {
-          throw new Error('nodeUrls array cannot be empty');
+          throw new Error("nodeUrls array cannot be empty");
         }
         // Parse nodeUrls if in string format
-        this.endPoints = typeof poolConfig.nodeUrls[0] === 'string'
-          ? parseNodeUrls(poolConfig.nodeUrls as string[])
-          : poolConfig.nodeUrls as EndPoint[];
+        this.endPoints =
+          typeof poolConfig.nodeUrls[0] === "string"
+            ? parseNodeUrls(poolConfig.nodeUrls as string[])
+            : (poolConfig.nodeUrls as EndPoint[]);
       } else if (poolConfig.host && poolConfig.port) {
         this.endPoints = [{ host: poolConfig.host, port: poolConfig.port }];
       } else {
-        throw new Error('Either nodeUrls or host/port must be provided in config');
+        throw new Error(
+          "Either nodeUrls or host/port must be provided in config",
+        );
       }
     } else {
       // Old format: constructor(hosts: string | string[], port: number, config?: Partial<PoolConfig>)
       if (port === undefined) {
-        throw new Error('Port must be provided when using host-based constructor');
+        throw new Error(
+          "Port must be provided when using host-based constructor",
+        );
       }
-      
+
       this.config = { ...DEFAULT_POOL_CONFIG, ...config, port } as PoolConfig;
-      
-      const hostList = Array.isArray(hostsOrConfig) ? hostsOrConfig : [hostsOrConfig];
+
+      const hostList = Array.isArray(hostsOrConfig)
+        ? hostsOrConfig
+        : [hostsOrConfig];
       this.endPoints = hostList.map((host) => ({ host, port }));
     }
 
     logger.info(
-      `${this.getPoolName()} created with ${this.endPoints.length} endpoints, max pool size: ${this.config.maxPoolSize}`
+      `${this.getPoolName()} created with ${this.endPoints.length} endpoints, max pool size: ${this.config.maxPoolSize}`,
     );
   }
 
@@ -101,9 +113,9 @@ export abstract class BaseSessionPool {
     // Use unref() so it doesn't keep the process alive
     this.cleanupInterval = setInterval(() => {
       this.cleanupIdleSessions().catch((error) => {
-        logger.error('Error during scheduled session cleanup:', error);
+        logger.error("Error during scheduled session cleanup:", error);
       });
-    }, 30000).unref(); // Check every 30 seconds
+    }, 30000); // Check every 30 seconds
 
     logger.info(`${this.getPoolName()} initialized with ${minSize} sessions`);
   }
@@ -123,7 +135,8 @@ export abstract class BaseSessionPool {
   protected getNextEndPoint(): EndPoint {
     // Round-robin selection
     const endPoint = this.endPoints[this.currentEndPointIndex];
-    this.currentEndPointIndex = (this.currentEndPointIndex + 1) % this.endPoints.length;
+    this.currentEndPointIndex =
+      (this.currentEndPointIndex + 1) % this.endPoints.length;
     return endPoint;
   }
 
@@ -158,7 +171,7 @@ export abstract class BaseSessionPool {
         if (index > -1) {
           this.waitQueue.splice(index, 1);
         }
-        reject(new Error('Timeout waiting for available session'));
+        reject(new Error("Timeout waiting for available session"));
       }, waitTimeout);
 
       this.waitQueue.push((session: Session) => {
@@ -198,7 +211,7 @@ export abstract class BaseSessionPool {
       (ps) =>
         !ps.inUse &&
         now - ps.lastUsed > maxIdleTime &&
-        this.pool.length > minSize
+        this.pool.length > minSize,
     );
 
     // Properly await async operations
@@ -212,13 +225,16 @@ export abstract class BaseSessionPool {
           }
           logger.debug(`Removed idle session from ${this.getPoolName()}`);
         } catch (error) {
-          logger.error('Error closing idle session:', error);
+          logger.error("Error closing idle session:", error);
         }
-      })
+      }),
     );
   }
 
-  async executeQueryStatement(sql: string, timeoutMs: number = 60000): Promise<QueryResult> {
+  async executeQueryStatement(
+    sql: string,
+    timeoutMs: number = 60000,
+  ): Promise<QueryResult> {
     const session = await this.getSession();
     try {
       return await session.executeQueryStatement(sql, timeoutMs);
@@ -257,9 +273,9 @@ export abstract class BaseSessionPool {
         try {
           await ps.session.close();
         } catch (error) {
-          logger.error('Error closing session:', error);
+          logger.error("Error closing session:", error);
         }
-      })
+      }),
     );
 
     this.pool = [];

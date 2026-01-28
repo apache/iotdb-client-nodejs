@@ -11,8 +11,10 @@ module.exports = {
   ],
   coverageDirectory: 'coverage',
   verbose: true,
-  // Performance optimizations
-  maxWorkers: '50%', // Use half of available CPUs
+  detectOpenHandles: true,
+  // Run tests sequentially to avoid database conflicts
+  // Multiple tests share the same database names (root.test for tree model, test for table model)
+  maxWorkers: 1, // Run tests one at a time
   testTimeout: 60000, // Global timeout of 60s
   // Cache configuration for faster subsequent runs
   cache: true,

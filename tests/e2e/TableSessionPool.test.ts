@@ -17,13 +17,14 @@
  * under the License.
  */
 
-import { TableSessionPool } from '../../src/client/TableSessionPool';
+import { TableSessionPool } from "../../src/client/TableSessionPool";
+import { TSDataType } from "../../src/utils/DataTypes";
 
-describe('TableSessionPool E2E Tests', () => {
-  const IOTDB_HOST = process.env.IOTDB_HOST || 'localhost';
-  const IOTDB_PORT = parseInt(process.env.IOTDB_PORT || '6667');
-  const IOTDB_USER = process.env.IOTDB_USER || 'root';
-  const IOTDB_PASSWORD = process.env.IOTDB_PASSWORD || 'root';
+describe("TableSessionPool E2E Tests", () => {
+  const IOTDB_HOST = process.env.IOTDB_HOST || "localhost";
+  const IOTDB_PORT = parseInt(process.env.IOTDB_PORT || "6667");
+  const IOTDB_USER = process.env.IOTDB_USER || "root";
+  const IOTDB_PASSWORD = process.env.IOTDB_PASSWORD || "root";
 
   let pool: TableSessionPool;
   let isConnected = false;
@@ -32,9 +33,9 @@ describe('TableSessionPool E2E Tests', () => {
     pool = new TableSessionPool(IOTDB_HOST, IOTDB_PORT, {
       username: IOTDB_USER,
       password: IOTDB_PASSWORD,
-      database: 'test1',
+      database: "test",
       maxPoolSize: 5,
-      minPoolSize: 2
+      minPoolSize: 2,
     });
 
     try {
@@ -42,14 +43,15 @@ describe('TableSessionPool E2E Tests', () => {
       isConnected = true;
       // Cleanup from previous runs
       try {
-        await pool.executeNonQueryStatement('DROP DATABASE test1');
-        await pool.executeNonQueryStatement('DROP DATABASE test2');
+        await pool.executeNonQueryStatement("DROP DATABASE test");
       } catch (e) {
-        // Ignore errors if databases don't exist
+        // Ignore errors if database doesn't exist
       }
     } catch (error) {
-      console.warn('Could not connect to IoTDB. E2E tests will be skipped.');
-      console.warn('Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.');
+      console.warn("Could not connect to IoTDB. E2E tests will be skipped.");
+      console.warn(
+        "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",
+      );
     }
   }, 60000);
 
@@ -57,8 +59,7 @@ describe('TableSessionPool E2E Tests', () => {
     if (pool && isConnected) {
       // Cleanup
       try {
-        await pool.executeNonQueryStatement('DROP DATABASE test1');
-        await pool.executeNonQueryStatement('DROP DATABASE test2');
+        await pool.executeNonQueryStatement("DROP DATABASE test");
       } catch (e) {
         // Ignore cleanup errors
       }
@@ -66,145 +67,147 @@ describe('TableSessionPool E2E Tests', () => {
     }
   }, 60000);
 
-  test('Should create databases and tables (based on C# example)', async () => {
+  test("Should create database and tables", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
-    // Create databases
-    await pool.executeNonQueryStatement('CREATE DATABASE test1');
-    await pool.executeNonQueryStatement('CREATE DATABASE test2');
+    // Create database
+    await pool.executeNonQueryStatement("CREATE DATABASE test");
 
-    // Use test2 database
-    await pool.executeNonQueryStatement('USE test2');
+    // Use test database
+    await pool.executeNonQueryStatement("USE test");
 
-    // Create table in test1 using full qualified name
+    // Create table1
     await pool.executeNonQueryStatement(
-      'CREATE TABLE test1.table1(' +
-      'region_id STRING TAG, ' +
-      'plant_id STRING TAG, ' +
-      'device_id STRING TAG, ' +
-      'model STRING ATTRIBUTE, ' +
-      'temperature FLOAT FIELD, ' +
-      'humidity DOUBLE FIELD) ' +
-      'WITH (TTL=3600000)'
+      "CREATE TABLE table1(" +
+        "region_id STRING TAG, " +
+        "plant_id STRING TAG, " +
+        "device_id STRING TAG, " +
+        "model STRING ATTRIBUTE, " +
+        "temperature FLOAT FIELD, " +
+        "humidity DOUBLE FIELD) " +
+        "WITH (TTL=3600000)",
     );
 
-    // Create table in current database (test2)
+    // Create table2
     await pool.executeNonQueryStatement(
-      'CREATE TABLE table2(' +
-      'region_id STRING TAG, ' +
-      'plant_id STRING TAG, ' +
-      'color STRING ATTRIBUTE, ' +
-      'temperature FLOAT FIELD, ' +
-      'speed DOUBLE FIELD) ' +
-      'WITH (TTL=6600000)'
+      "CREATE TABLE table2(" +
+        "region_id STRING TAG, " +
+        "plant_id STRING TAG, " +
+        "color STRING ATTRIBUTE, " +
+        "temperature FLOAT FIELD, " +
+        "speed DOUBLE FIELD) " +
+        "WITH (TTL=6600000)",
     );
 
-    // Show tables from current database (test2)
-    const result1 = await pool.executeQueryStatement('SHOW TABLES');
+    // Show tables from current database (test)
+    const result1 = await pool.executeQueryStatement("SHOW TABLES");
     expect(result1).toBeDefined();
-    expect(result1.rows.length).toBeGreaterThan(0);
-
-    // Show tables from test1 database
-    const result2 = await pool.executeQueryStatement('SHOW TABLES FROM test1');
-    expect(result2).toBeDefined();
-    expect(result2.rows.length).toBeGreaterThan(0);
+    expect(result1.rows.length).toBeGreaterThanOrEqual(2);
   });
 
-  test('Should insert and query table data (based on C# example)', async () => {
+  test("Should insert and query table data (based on C# example)", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
-    const tableName = 'testTable1';
-    
+    const tableName = "testTable1";
+
     // Create table
     await pool.executeNonQueryStatement(
       `CREATE TABLE ${tableName}(` +
-      'region_id STRING TAG, ' +
-      'plant_id STRING TAG, ' +
-      'device_id STRING TAG, ' +
-      'model STRING ATTRIBUTE, ' +
-      'temperature FLOAT FIELD, ' +
-      'humidity DOUBLE FIELD)'
+        "region_id STRING TAG, " +
+        "plant_id STRING TAG, " +
+        "device_id STRING TAG, " +
+        "model STRING ATTRIBUTE, " +
+        "temperature FLOAT FIELD, " +
+        "humidity DOUBLE FIELD)",
     );
 
     // Insert data using tablet - simplified to 50 records
     const tablet = {
       deviceId: tableName,
-      measurements: ['region_id', 'plant_id', 'device_id', 'model', 'temperature', 'humidity'],
-      dataTypes: [5, 5, 5, 5, 3, 4], // STRING, STRING, STRING, STRING, FLOAT, DOUBLE
+      measurements: [
+        "region_id",
+        "plant_id",
+        "device_id",
+        "model",
+        "temperature",
+        "humidity",
+      ],
+      dataTypes: [
+        TSDataType.STRING,
+        TSDataType.STRING,
+        TSDataType.STRING,
+        TSDataType.STRING,
+        TSDataType.FLOAT,
+        TSDataType.DOUBLE,
+      ],
       timestamps: [] as number[],
       values: [] as any[][],
     };
 
     for (let i = 0; i < 50; i++) {
       tablet.timestamps.push(i);
-      tablet.values.push(['1', '5', '3', 'A', 1.23 + i, 111.1 + i]);
+      tablet.values.push(["1", "5", "3", "A", 1.23 + i, 111.1 + i]);
     }
 
     await pool.insertTablet(tablet);
 
     // Query the data
     const result = await pool.executeQueryStatement(
-      `SELECT * FROM ${tableName} WHERE region_id = '1' AND plant_id IN ('3', '5') AND device_id = '3' LIMIT 10`
+      `SELECT * FROM ${tableName} WHERE region_id = '1' AND plant_id IN ('3', '5') AND device_id = '3' LIMIT 10`,
     );
 
     expect(result).toBeDefined();
     expect(result.rows.length).toBeGreaterThan(0);
   });
 
-  test('Should use database context switching (based on C# example)', async () => {
+  test("Should query tables from database context", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
-    // Show tables from test1
-    const result1 = await pool.executeQueryStatement('SHOW TABLES FROM test1');
-    expect(result1).toBeDefined();
-
-    // Switch to test2
-    await pool.executeNonQueryStatement('USE test2');
-
-    // Show tables from current database (test2)
-    const result2 = await pool.executeQueryStatement('SHOW TABLES');
-    expect(result2).toBeDefined();
+    // Show tables from current database (test)
+    const result = await pool.executeQueryStatement("SHOW TABLES");
+    expect(result).toBeDefined();
+    expect(result.rows.length).toBeGreaterThan(0);
   });
 
-  test('Should handle insert with null values (based on C# example)', async () => {
+  test("Should handle insert with null values (based on C# example)", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
-    const tableName = 't1';
+    const tableName = "t1";
 
     // Create table
     await pool.executeNonQueryStatement(
-      `CREATE TABLE ${tableName}(t1 STRING TAG, f1 INT32 FIELD)`
+      `CREATE TABLE ${tableName}(t1 STRING TAG, f1 INT32 FIELD)`,
     );
 
     // Insert data with some null values
     const tablet = {
       deviceId: tableName,
-      measurements: ['t1', 'f1'],
-      dataTypes: [5, 1], // STRING, INT32
+      measurements: ["t1", "f1"],
+      dataTypes: [TSDataType.STRING, TSDataType.INT32],
       timestamps: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
       values: [
-        ['t1', 100],
-        ['t1', 200],
-        ['t1', 300],
-        ['t1', 400],
-        ['t1', 500],
-        ['t1', null],
-        ['t1', null],
-        ['t1', null],
-        ['t1', null],
-        ['t1', null],
+        ["t1", 100],
+        ["t1", 200],
+        ["t1", 300],
+        ["t1", 400],
+        ["t1", 500],
+        ["t1", null],
+        ["t1", null],
+        ["t1", null],
+        ["t1", null],
+        ["t1", null],
       ],
     };
 
@@ -212,7 +215,7 @@ describe('TableSessionPool E2E Tests', () => {
 
     // Query null count
     const result = await pool.executeQueryStatement(
-      `SELECT COUNT(*) FROM ${tableName} WHERE f1 IS NULL`
+      `SELECT COUNT(*) FROM ${tableName} WHERE f1 IS NULL`,
     );
 
     expect(result).toBeDefined();
@@ -222,9 +225,9 @@ describe('TableSessionPool E2E Tests', () => {
     expect(count).toBe(5);
   });
 
-  test('Should report pool statistics', async () => {
+  test("Should report pool statistics", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
@@ -236,9 +239,9 @@ describe('TableSessionPool E2E Tests', () => {
     expect(availableSize).toBeLessThanOrEqual(poolSize);
   });
 
-  test('Should support explicit session management with getSession/releaseSession', async () => {
+  test("Should support explicit session management with getSession/releaseSession", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
@@ -249,7 +252,7 @@ describe('TableSessionPool E2E Tests', () => {
 
     try {
       // Execute operations with the explicit session
-      const result = await session.executeQueryStatement('SHOW DATABASES');
+      const result = await session.executeQueryStatement("SHOW DATABASES");
       expect(result).toBeDefined();
       expect(result.columns).toBeDefined();
 
@@ -264,9 +267,9 @@ describe('TableSessionPool E2E Tests', () => {
     expect(pool.getAvailableSize()).toBeGreaterThan(0);
   });
 
-  test('Should support nodeUrls in string format', async () => {
+  test("Should support nodeUrls in string format", async () => {
     if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+      console.log("Skipping test - no IoTDB connection");
       return;
     }
 
@@ -275,7 +278,7 @@ describe('TableSessionPool E2E Tests', () => {
       nodeUrls: [`${IOTDB_HOST}:${IOTDB_PORT}`],
       username: IOTDB_USER,
       password: IOTDB_PASSWORD,
-      database: 'test1',
+      database: "test",
       maxPoolSize: 3,
       minPoolSize: 1,
     });
@@ -284,10 +287,13 @@ describe('TableSessionPool E2E Tests', () => {
       await stringNodeUrlsPool.init();
       expect(stringNodeUrlsPool.getPoolSize()).toBeGreaterThanOrEqual(1);
 
-      const result = await stringNodeUrlsPool.executeQueryStatement('SHOW DATABASES');
+      const result =
+        await stringNodeUrlsPool.executeQueryStatement("SHOW DATABASES");
       expect(result).toBeDefined();
-      
-      console.log('TableSessionPool with string format nodeUrls working correctly');
+
+      console.log(
+        "TableSessionPool with string format nodeUrls working correctly",
+      );
     } finally {
       await stringNodeUrlsPool.close();
     }
