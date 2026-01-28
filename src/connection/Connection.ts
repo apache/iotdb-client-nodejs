@@ -89,7 +89,7 @@ export class Connection {
       // This prevents the connection from keeping the process alive
       if (this.connection && (this.connection as any).connection) {
         const socket = (this.connection as any).connection;
-        if (socket && typeof socket.unref === 'function') {
+        if (socket && typeof socket.unref === "function") {
           socket.unref();
           logger.debug("Socket unref'd to allow process exit");
         }
@@ -193,7 +193,11 @@ export class Connection {
               reject(new Error("Close session timeout"));
             }, 5000);
             // Use unref() so timeout doesn't prevent process exit
-            if (timeoutHandle && typeof timeoutHandle === 'object' && 'unref' in timeoutHandle) {
+            if (
+              timeoutHandle &&
+              typeof timeoutHandle === "object" &&
+              "unref" in timeoutHandle
+            ) {
               timeoutHandle.unref();
             }
           }),
