@@ -17,8 +17,10 @@
  * under the License.
  */
 
-export { Session, QueryResult, Tablet } from './client/Session';
+export { Session } from './client/Session';
+export type { QueryResult, Tablet } from './client/Session';
 export { SessionPool } from './client/SessionPool';
 export { TableSessionPool } from './client/TableSessionPool';
-export { Config, PoolConfig, SSLOptions, EndPoint, DEFAULT_CONFIG, DEFAULT_POOL_CONFIG } from './utils/Config';
+export type { Config, PoolConfig, SSLOptions, EndPoint } from './utils/Config';
+export { DEFAULT_CONFIG, DEFAULT_POOL_CONFIG } from './utils/Config';
 export { logger, LogLevel } from './utils/Logger';

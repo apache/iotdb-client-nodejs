@@ -58,4 +58,4 @@ export class TableSessionPool extends BaseSessionPool {
 }
 
 // Re-export types for backward compatibility
-export { QueryResult, Tablet } from './Session';
+export type { QueryResult, Tablet } from './Session';
