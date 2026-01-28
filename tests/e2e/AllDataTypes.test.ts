@@ -115,7 +115,8 @@ describe('All Data Types E2E Tests', () => {
         'double_sensor',
         'text_sensor'
       ],
-      // Data types: BOOLEAN(0), INT32(1), INT64(2), FLOAT(3), DOUBLE(4), TEXT(5)
+      // Data types from Apache TSFile:
+      // BOOLEAN(0), INT32(1), INT64(2), FLOAT(3), DOUBLE(4), TEXT(5)
       dataTypes: [0, 1, 2, 3, 4, 5],
       timestamps: [now, now + 1, now + 2],
       values: [

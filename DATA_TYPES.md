@@ -1,10 +1,10 @@
 # IoTDB Data Types Support
 
-This document describes the complete set of IoTDB data types supported by the Node.js client.
+This document describes the complete set of IoTDB data types supported by the Node.js client, based on the official Apache TSFile type definitions.
 
 ## Supported Data Types
 
-The IoTDB Node.js client now supports all IoTDB data types:
+The IoTDB Node.js client supports all standard IoTDB data types as defined in Apache TSFile:
 
 | Type Code | Type Name | Description | JavaScript Type | Storage Size |
 |-----------|-----------|-------------|-----------------|--------------|
@@ -14,10 +14,21 @@ The IoTDB Node.js client now supports all IoTDB data types:
 | 3 | FLOAT | 32-bit floating point | `number` | 4 bytes |
 | 4 | DOUBLE | 64-bit floating point | `number` | 8 bytes |
 | 5 | TEXT | UTF-8 encoded text | `string` | Variable (4-byte length + content) |
-| 6 | BLOB | Binary data | `Buffer` | Variable (4-byte length + content) |
-| 7 | STRING | UTF-8 encoded string | `string` | Variable (4-byte length + content) |
-| 8 | DATE | Date (days since epoch) | `Date` | 4 bytes |
-| 9 | TIMESTAMP | Timestamp (milliseconds) | `Date` | 8 bytes |
+| 6 | VECTOR | Vector data (not yet implemented) | - | - |
+| 7 | UNKNOWN | Unknown type (reserved) | - | - |
+| 8 | TIMESTAMP | Timestamp (milliseconds) | `Date` | 8 bytes |
+| 9 | DATE | Date (days since epoch) | `Date` | 4 bytes |
+| 10 | BLOB | Binary data | `Buffer` | Variable (4-byte length + content) |
+| 11 | STRING | UTF-8 encoded string | `string` | Variable (4-byte length + content) |
+| 12 | OBJECT | Object type (reserved) | - | - |
+
+**Note**: Types 0-5, 8-11 are fully supported. Types 6, 7, and 12 are reserved for future use.
+
+## Reference
+
+Type definitions are based on:
+- [Apache TSFile TSDataType.java](https://github.com/apache/tsfile/blob/develop/java/common/src/main/java/org/apache/tsfile/enums/TSDataType.java)
+- [Apache IoTDB C# Client Constants](https://github.com/apache/iotdb-client-csharp/blob/main/src/Apache.IoTDB/IoTDBConstants.cs)
 
 ## Usage Examples
 
@@ -90,7 +101,7 @@ await session.insertTablet(tablet);
 const tablet = {
   deviceId: 'root.test.device1',
   measurements: ['blob_sensor'],
-  dataTypes: [6], // BLOB
+  dataTypes: [10], // BLOB (type code 10)
   timestamps: [Date.now()],
   values: [
     [Buffer.from([0x01, 0x02, 0x03, 0x04])],
@@ -109,17 +120,17 @@ const blobData = result.rows[0][1]; // Buffer
 console.log(blobData); // <Buffer 01 02 03 04>
 ```
 
-### Working with DATE and TIMESTAMP
+### Working with TIMESTAMP and DATE
 
 ```typescript
-// DATE type stores dates without time
+// TIMESTAMP stores millisecond precision, DATE stores day precision
 const tablet = {
   deviceId: 'root.test.device1',
-  measurements: ['date_sensor', 'timestamp_sensor'],
-  dataTypes: [8, 9], // DATE, TIMESTAMP
+  measurements: ['timestamp_sensor', 'date_sensor'],
+  dataTypes: [8, 9], // TIMESTAMP=8, DATE=9
   timestamps: [Date.now()],
   values: [
-    [new Date('2024-01-15'), new Date('2024-01-15T10:30:00Z')],
+    [new Date('2024-01-15T10:30:00Z'), new Date('2024-01-15')],
   ],
 };
 
@@ -127,11 +138,11 @@ await session.insertTablet(tablet);
 
 // Query returns Date objects
 const result = await session.executeQueryStatement(
-  'SELECT date_sensor, timestamp_sensor FROM root.test.device1'
+  'SELECT timestamp_sensor, date_sensor FROM root.test.device1'
 );
 
-const dateValue = result.rows[0][1]; // Date object
-const timestampValue = result.rows[0][2]; // Date object
+const timestampValue = result.rows[0][1]; // Date object with time
+const dateValue = result.rows[0][2]; // Date object (day precision)
 ```
 
 ### Query Results with All Types

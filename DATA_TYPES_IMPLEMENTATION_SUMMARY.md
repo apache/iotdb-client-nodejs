@@ -1,18 +1,19 @@
 # Data Types Enhancement Summary
 
-## User Request (Comment #3714178397)
+## User Request (Comment #3714178397 & #3714232108)
 
 User @CritasWang requested:
 1. Confirm all IoTDB data types are properly handled, including BLOB, STRING, DATE, TIMESTAMP
 2. Design a test case that simultaneously supports all data types
+3. **IMPORTANT**: Use official Apache TSFile type enumerations, not made-up values
 
-## Implementation
+## Implementation - CORRECTED
 
-### Added Support for 4 New Data Types
+### Supported Data Types Based on Apache TSFile
 
-Extended the IoTDB Node.js client to support all 10 data types:
+The IoTDB Node.js client now supports all standard IoTDB data types as defined in Apache TSFile:
 
-**Previously Supported (0-5):**
+**Core Types (0-5):**
 - BOOLEAN (0)
 - INT32 (1)
 - INT64 (2)
@@ -20,32 +21,30 @@ Extended the IoTDB Node.js client to support all 10 data types:
 - DOUBLE (4)
 - TEXT (5)
 
-**Newly Added (6-9):**
-- BLOB (6): Binary data
-- STRING (7): UTF-8 string (similar to TEXT)
-- DATE (8): Date values (days since epoch)
-- TIMESTAMP (9): Timestamp values (milliseconds)
+**Reserved Types:**
+- VECTOR (6): Reserved for future use
+- UNKNOWN (7): Reserved
+
+**Extended Types (8-11):**
+- TIMESTAMP (8): Timestamp values (milliseconds)
+- DATE (9): Date values (days since epoch)
+- BLOB (10): Binary data
+- STRING (11): UTF-8 string (similar to TEXT)
+
+**Reserved:**
+- OBJECT (12): Reserved for future use
 
 ### Code Changes
 
 #### 1. Serialization (Session.ts - `serializeColumn`)
 
-Added support for writing new data types to IoTDB:
+Corrected type codes based on official Apache TSFile definitions:
 
 ```typescript
-case 6: { // BLOB
-  const blobBuffers = values.map((v) => {
-    const blob = Buffer.isBuffer(v) ? v : Buffer.from(v);
-    const len = Buffer.alloc(4);
-    len.writeInt32LE(blob.length);
-    return Buffer.concat([len, blob]);
-  });
-  return Buffer.concat(blobBuffers);
-}
-
-case 7: // STRING (same as TEXT)
-case 8: // DATE (INT32 - days since epoch)
-case 9: // TIMESTAMP (INT64 - milliseconds)
+case 8: { // TIMESTAMP (INT64 - milliseconds)
+case 9: { // DATE (INT32 - days since epoch)
+case 10: { // BLOB
+case 11: // STRING (same as TEXT)
 ```
 
 #### 2. Deserialization (Session.ts - `deserializeColumn`)
@@ -116,10 +115,13 @@ Added Data Types section to API Reference with link to detailed documentation.
 | FLOAT | 3 | number | number | 4 bytes |
 | DOUBLE | 4 | number | number | 8 bytes |
 | TEXT | 5 | string | string | Variable |
-| BLOB | 6 | Buffer | Buffer | Variable |
-| STRING | 7 | string | string | Variable |
-| DATE | 8 | Date/number | Date | 4 bytes |
-| TIMESTAMP | 9 | Date/bigint | Date | 8 bytes |
+| VECTOR | 6 | - | - | - (reserved) |
+| UNKNOWN | 7 | - | - | - (reserved) |
+| TIMESTAMP | 8 | Date/bigint | Date | 8 bytes |
+| DATE | 9 | Date/number | Date | 4 bytes |
+| BLOB | 10 | Buffer | Buffer | Variable |
+| STRING | 11 | string | string | Variable |
+| OBJECT | 12 | - | - | - (reserved) |
 
 ### Usage Example
 
@@ -135,9 +137,9 @@ const tablet = {
     'float_sensor',
     'double_sensor',
     'text_sensor',
-    // Could add: 'blob_sensor', 'string_sensor', 'date_sensor', 'timestamp_sensor'
+    // Extended types: 'timestamp_sensor', 'date_sensor', 'blob_sensor', 'string_sensor'
   ],
-  dataTypes: [0, 1, 2, 3, 4, 5], // All 10 types supported
+  dataTypes: [0, 1, 2, 3, 4, 5], // Core types: BOOLEAN, INT32, INT64, FLOAT, DOUBLE, TEXT
   timestamps: [now, now + 1, now + 2],
   values: [
     [true, 100, 1000n, 1.23, 4.56, 'hello'],
