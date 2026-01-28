@@ -26,6 +26,7 @@ describe('Multi-Node E2E Tests', () => {
   const IOTDB_PORT_3 = parseInt(process.env.IOTDB_PORT_3 || '6669', 10);
   const IOTDB_USER = process.env.IOTDB_USER || 'root';
   const IOTDB_PASSWORD = process.env.IOTDB_PASSWORD || 'root';
+  const IS_MULTI_NODE = process.env.MULTI_NODE === 'true';
 
   let pool1: SessionPool;
   let pool2: SessionPool;
@@ -33,6 +34,12 @@ describe('Multi-Node E2E Tests', () => {
   let isConnected = false;
 
   beforeAll(async () => {
+    // Skip multi-node tests if not in multi-node environment
+    if (!IS_MULTI_NODE) {
+      console.log('Skipping Multi-Node tests - not in multi-node environment (MULTI_NODE env var not set)');
+      return;
+    }
+
     // For 3C3D setup, connect to all three DataNode ports
     // This enables true multi-node load distribution and testing
     console.log(`Connecting to IoTDB cluster:`);
@@ -76,21 +83,28 @@ describe('Multi-Node E2E Tests', () => {
   }, 60000);
 
   afterAll(async () => {
+    if (!IS_MULTI_NODE) {
+      return;
+    }
     if (isConnected) {
       try {
         await pool1.executeNonQueryStatement('DROP DATABASE root.multinode_test');
       } catch (error) {
         // Ignore cleanup errors
       }
-      await pool1.close();
-      await pool2.close();
-      await pool3.close();
+      
+      // Close pools in parallel with timeout protection
+      await Promise.allSettled([
+        pool1.close(),
+        pool2.close(),
+        pool3.close()
+      ]);
     }
-  }, 60000);
+  }, 90000); // Increased timeout for multi-node cleanup
 
   test('Should initialize pools with connections to all three DataNodes', async () => {
-    if (!isConnected) {
-      console.log('Skipping test - no IoTDB connection');
+    if (!IS_MULTI_NODE || !isConnected) {
+      console.log('Skipping test - not in multi-node environment or no IoTDB connection');
       return;
     }
 

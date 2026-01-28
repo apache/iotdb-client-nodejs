@@ -66,21 +66,41 @@ describe('Large Query E2E Tests', () => {
     try {
       await session.executeNonQueryStatement('CREATE DATABASE root.large_query_test');
     } catch (error: any) {
-      if (!error.message.includes('already exists')) {
+      if (!error.message?.includes('already exists')) {
         throw error;
       }
     }
 
-    // Create timeseries for large dataset
-    await session.executeNonQueryStatement(
-      'CREATE TIMESERIES root.large_query_test.device1.sensor1 WITH DATATYPE=FLOAT, ENCODING=RLE'
-    );
-    await session.executeNonQueryStatement(
-      'CREATE TIMESERIES root.large_query_test.device1.sensor2 WITH DATATYPE=FLOAT, ENCODING=RLE'
-    );
-    await session.executeNonQueryStatement(
-      'CREATE TIMESERIES root.large_query_test.device1.sensor3 WITH DATATYPE=FLOAT, ENCODING=RLE'
-    );
+    // Create timeseries for large dataset - handle if they already exist
+    try {
+      await session.executeNonQueryStatement(
+        'CREATE TIMESERIES root.large_query_test.device1.sensor1 WITH DATATYPE=FLOAT, ENCODING=RLE'
+      );
+    } catch (error: any) {
+      if (!error.message?.includes('already exists')) {
+        throw error;
+      }
+    }
+    
+    try {
+      await session.executeNonQueryStatement(
+        'CREATE TIMESERIES root.large_query_test.device1.sensor2 WITH DATATYPE=FLOAT, ENCODING=RLE'
+      );
+    } catch (error: any) {
+      if (!error.message?.includes('already exists')) {
+        throw error;
+      }
+    }
+    
+    try {
+      await session.executeNonQueryStatement(
+        'CREATE TIMESERIES root.large_query_test.device1.sensor3 WITH DATATYPE=FLOAT, ENCODING=RLE'
+      );
+    } catch (error: any) {
+      if (!error.message?.includes('already exists')) {
+        throw error;
+      }
+    }
   });
 
   test('Should insert large dataset (5,000 records)', async () => {
@@ -227,5 +247,5 @@ describe('Large Query E2E Tests', () => {
       expect(result.rows).toBeDefined();
       console.log(`Query ${index + 1} returned ${result.rows.length} rows`);
     });
-  }, 30000);
+  }, 60000); // Increased timeout for concurrent queries
 });

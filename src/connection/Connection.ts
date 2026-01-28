@@ -18,7 +18,6 @@
  */
 
 import * as thrift from 'thrift';
-import * as tls from 'tls';
 import { Config } from '../utils/Config';
 import { logger } from '../utils/Logger';
 
@@ -152,7 +151,7 @@ export class Connection {
       });
 
       await new Promise<void>((resolve, reject) => {
-        this.client.closeSession(closeReq, (err: Error, response: any) => {
+        this.client.closeSession(closeReq, (err: Error, _response: any) => {
           if (err) {
             reject(err);
             return;

@@ -44,10 +44,13 @@ await session.open();
 // Execute non-query statement
 await session.executeNonQueryStatement('CREATE DATABASE root.test');
 
-// Execute query statement
+// Execute query statement with default timeout (60 seconds)
 const result = await session.executeQueryStatement('SHOW DATABASES');
 console.log('Columns:', result.columns);
 console.log('Rows:', result.rows);
+
+// Execute query with custom timeout (30 seconds)
+const customResult = await session.executeQueryStatement('SELECT * FROM root.test.**', 30000);
 
 // Insert tablet data
 await session.insertTablet({
@@ -169,6 +172,14 @@ await tablePool.close();
 
 ## API Reference
 
+### Data Types
+
+IoTDB Node.js client supports all IoTDB data types including BOOLEAN, INT32, INT64, FLOAT, DOUBLE, TEXT, BLOB, STRING, DATE, and TIMESTAMP. See [DATA_TYPES.md](./DATA_TYPES.md) for comprehensive documentation on:
+- Type mappings between JavaScript and IoTDB
+- Usage examples for each data type
+- Best practices and encoding options
+- Null value handling
+
 ### Session
 
 #### Constructor
@@ -179,7 +190,7 @@ new Session(config: Partial<Config>)
 #### Methods
 - `async open(): Promise<void>` - Open the session
 - `async close(): Promise<void>` - Close the session
-- `async executeQueryStatement(sql: string): Promise<QueryResult>` - Execute a query
+- `async executeQueryStatement(sql: string, timeoutMs?: number): Promise<QueryResult>` - Execute a query with optional timeout (default: 60000ms)
 - `async executeNonQueryStatement(sql: string): Promise<void>` - Execute a non-query statement
 - `async insertTablet(tablet: Tablet): Promise<void>` - Insert tablet data
 - `isOpen(): boolean` - Check if session is open
@@ -194,7 +205,7 @@ new SessionPool(hosts: string | string[], port: number, config?: Partial<PoolCon
 #### Methods
 - `async init(): Promise<void>` - Initialize the pool
 - `async close(): Promise<void>` - Close all connections
-- `async executeQueryStatement(sql: string): Promise<QueryResult>` - Execute a query
+- `async executeQueryStatement(sql: string, timeoutMs?: number): Promise<QueryResult>` - Execute a query with optional timeout (default: 60000ms)
 - `async executeNonQueryStatement(sql: string): Promise<void>` - Execute a non-query statement
 - `async insertTablet(tablet: Tablet): Promise<void>` - Insert tablet data
 - `getPoolSize(): number` - Get current pool size
@@ -202,7 +213,7 @@ new SessionPool(hosts: string | string[], port: number, config?: Partial<PoolCon
 
 ### TableSessionPool
 
-Same as SessionPool but optimized for table model operations.
+Same as SessionPool but optimized for table model operations. All query methods support the same timeout parameter (default: 60000ms).
 
 ### Types
 

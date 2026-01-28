@@ -10,5 +10,11 @@ module.exports = {
     '!src/thrift/generated/**'
   ],
   coverageDirectory: 'coverage',
-  verbose: true
+  verbose: true,
+  // Performance optimizations
+  maxWorkers: '50%', // Use half of available CPUs
+  testTimeout: 60000, // Global timeout of 60s
+  // Cache configuration for faster subsequent runs
+  cache: true,
+  cacheDirectory: '<rootDir>/.jest-cache',
 };

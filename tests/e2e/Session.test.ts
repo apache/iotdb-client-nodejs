@@ -74,13 +74,26 @@ describe('Session E2E Tests', () => {
     // Create database (storage group)
     await session.executeNonQueryStatement('CREATE DATABASE root.ln');
 
-    // Create timeseries
-    await session.executeNonQueryStatement(
-      'CREATE TIMESERIES root.ln.wf01.wt01.status WITH DATATYPE=BOOLEAN, ENCODING=PLAIN'
-    );
-    await session.executeNonQueryStatement(
-      'CREATE TIMESERIES root.ln.wf01.wt01.temperature WITH DATATYPE=FLOAT, ENCODING=RLE'
-    );
+    // Create timeseries - handle if they already exist
+    try {
+      await session.executeNonQueryStatement(
+        'CREATE TIMESERIES root.ln.wf01.wt01.status WITH DATATYPE=BOOLEAN, ENCODING=PLAIN'
+      );
+    } catch (e: any) {
+      if (!e.message?.includes('already exists')) {
+        throw e;
+      }
+    }
+    
+    try {
+      await session.executeNonQueryStatement(
+        'CREATE TIMESERIES root.ln.wf01.wt01.temperature WITH DATATYPE=FLOAT, ENCODING=RLE'
+      );
+    } catch (e: any) {
+      if (!e.message?.includes('already exists')) {
+        throw e;
+      }
+    }
 
     // Verify timeseries created
     const result = await session.executeQueryStatement('SHOW TIMESERIES root.ln.**');
@@ -150,10 +163,10 @@ describe('Session E2E Tests', () => {
 
   test('Should handle connection errors gracefully', async () => {
     const badSession = new Session({
-      host: 'invalid-host-that-does-not-exist',
-      port: 9999,
+      host: 'localhost',
+      port: 9999, // Non-existent port
     });
 
     await expect(badSession.open()).rejects.toThrow();
-  }, 60000);
+  }, 10000); // Reduced timeout since it should fail quickly
 });
