@@ -17,12 +17,12 @@
  * under the License.
  */
 
-import * as thrift from 'thrift';
-import { Config } from '../utils/Config';
-import { logger } from '../utils/Logger';
+import * as thrift from "thrift";
+import { Config } from "../utils/Config";
+import { logger } from "../utils/Logger";
 
-const IClientRPCService = require('../thrift/generated/IClientRPCService');
-const ttypes = require('../thrift/generated/client_types');
+const IClientRPCService = require("../thrift/generated/IClientRPCService");
+const ttypes = require("../thrift/generated/client_types");
 
 export class Connection {
   private config: Config;
@@ -39,7 +39,7 @@ export class Connection {
   async open(): Promise<void> {
     try {
       if (!this.config.host || !this.config.port) {
-        throw new Error('Host and port are required for connection');
+        throw new Error("Host and port are required for connection");
       }
 
       logger.debug(`Connecting to ${this.config.host}:${this.config.port}`);
@@ -65,23 +65,23 @@ export class Connection {
           {
             ...options,
             ...this.config.sslOptions,
-          }
+          },
         );
       } else {
         this.connection = thrift.createConnection(
           this.config.host,
           this.config.port,
-          options
+          options,
         );
       }
 
-      this.connection.on('error', (err: Error) => {
-        logger.error('Connection error:', err);
+      this.connection.on("error", (err: Error) => {
+        logger.error("Connection error:", err);
         this.isConnected = false;
       });
 
-      this.connection.on('close', () => {
-        logger.debug('Connection closed');
+      this.connection.on("close", () => {
+        logger.debug("Connection closed");
         this.isConnected = false;
       });
 
@@ -90,9 +90,9 @@ export class Connection {
       await this.openSession();
       await this.requestStatementId();
       this.isConnected = true;
-      logger.info('Connected successfully');
+      logger.info("Connected successfully");
     } catch (error) {
-      logger.error('Failed to connect:', error);
+      logger.error("Failed to connect:", error);
       throw error;
     }
   }
@@ -100,9 +100,9 @@ export class Connection {
   private async openSession(): Promise<void> {
     const openReq = new ttypes.TSOpenSessionReq({
       client_protocol: ttypes.TSProtocolVersion.IOTDB_SERVICE_PROTOCOL_V3,
-      username: this.config.username || 'root',
-      password: this.config.password || 'root',
-      zoneId: this.config.timezone || 'UTC+8',
+      username: this.config.username || "root",
+      password: this.config.password || "root",
+      zoneId: this.config.timezone || "UTC+8",
       configuration: {},
     });
 
@@ -114,7 +114,9 @@ export class Connection {
         }
 
         if (response.status.code !== 200) {
-          reject(new Error(response.status.message || 'Failed to open session'));
+          reject(
+            new Error(response.status.message || "Failed to open session"),
+          );
           return;
         }
 
@@ -127,75 +129,126 @@ export class Connection {
 
   private async requestStatementId(): Promise<void> {
     if (!this.sessionId) {
-      throw new Error('Session not open');
+      throw new Error("Session not open");
     }
 
     return new Promise((resolve, reject) => {
-      this.client.requestStatementId(this.sessionId, (err: Error, statementId: number) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
-        this.statementId = statementId;
-        logger.debug(`Statement ID requested: ${this.statementId}`);
-        resolve();
-      });
-    });
-  }
-
-  async close(): Promise<void> {
-    if (!this.isConnected || !this.sessionId) {
-      return;
-    }
-
-    try {
-      const closeReq = new ttypes.TSCloseSessionReq({
-        sessionId: this.sessionId,
-      });
-
-      await new Promise<void>((resolve, reject) => {
-        this.client.closeSession(closeReq, (err: Error, _response: any) => {
+      this.client.requestStatementId(
+        this.sessionId,
+        (err: Error, statementId: number) => {
           if (err) {
             reject(err);
             return;
           }
-          resolve();
-        });
-      });
 
-      this.sessionId = null;
+          this.statementId = statementId;
+          logger.debug(`Statement ID requested: ${this.statementId}`);
+          resolve();
+        },
+      );
+    });
+  }
+
+  async close(): Promise<void> {
+    if (!this.isConnected && !this.connection) {
+      return;
+    }
+
+    try {
+      // Close session if it's open
+      if (this.sessionId) {
+        const closeReq = new ttypes.TSCloseSessionReq({
+          sessionId: this.sessionId,
+        });
+
+        // Use a timeout handle that we can clear
+        let timeoutHandle: NodeJS.Timeout | null = null;
+
+        await Promise.race([
+          new Promise<void>((resolve, reject) => {
+            this.client.closeSession(closeReq, (err: Error, _response: any) => {
+              if (timeoutHandle) {
+                clearTimeout(timeoutHandle);
+                timeoutHandle = null;
+              }
+              if (err) {
+                reject(err);
+                return;
+              }
+              resolve();
+            });
+          }),
+          new Promise<void>((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+              reject(new Error("Close session timeout"));
+            }, 5000);
+          }),
+        ]).catch((error) => {
+          // Clear timeout if it's still active
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+            timeoutHandle = null;
+          }
+          logger.warn("Error closing session:", error);
+        });
+
+        this.sessionId = null;
+      }
+
       this.isConnected = false;
 
+      // Force close the connection
       if (this.connection) {
-        this.connection.end();
+        // Remove all event listeners to prevent memory leaks
+        this.connection.removeAllListeners();
+
+        // Destroy the connection immediately without waiting for graceful close
+        if (typeof this.connection.destroy === "function") {
+          this.connection.destroy();
+        } else {
+          this.connection.end();
+        }
+
         this.connection = null;
       }
 
-      logger.debug('Connection closed');
+      this.client = null;
+
+      logger.debug("Connection closed");
     } catch (error) {
-      logger.warn('Error closing connection:', error);
-      // Don't rethrow - closing is best effort
+      logger.warn("Error closing connection:", error);
+
+      // Force cleanup even if there's an error
+      this.sessionId = null;
+      this.isConnected = false;
+      if (this.connection) {
+        this.connection.removeAllListeners();
+        if (typeof this.connection.destroy === "function") {
+          this.connection.destroy();
+        }
+        this.connection = null;
+      }
+      this.client = null;
     }
   }
 
   getClient(): any {
     if (!this.isConnected || !this.client) {
-      throw new Error('Connection is not open');
+      throw new Error("Connection is not open");
     }
     return this.client;
   }
 
   getSessionId(): number {
     if (!this.sessionId) {
-      throw new Error('Session is not open');
+      throw new Error("Session is not open");
     }
     return this.sessionId;
   }
 
   getStatementId(): number {
     if (!this.statementId) {
-      throw new Error('Statement ID not available');
+      throw new Error("Statement ID not available");
     }
     return this.statementId;
   }
