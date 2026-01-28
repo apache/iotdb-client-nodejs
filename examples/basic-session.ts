@@ -2,23 +2,41 @@
  * Basic Session Example
  * 
  * This example demonstrates how to use a single Session to connect to IoTDB,
- * execute queries, and insert data.
+ * execute queries, and insert data. Shows both traditional and Builder pattern approaches.
  */
 
-import { Session } from '../src';
+import { Session, ConfigBuilder } from '../src';
 
 async function main() {
-  // Create a session
-  const session = new Session({
+  console.log('=== Basic Session Example ===\n');
+
+  // Method 1: Traditional constructor (backward compatible)
+  console.log('Method 1: Traditional constructor');
+  const session1 = new Session({
     host: 'localhost',
     port: 6667,
     username: 'root',
     password: 'root',
   });
 
+  // Method 2: Using Builder pattern (recommended)
+  console.log('Method 2: Using Builder pattern');
+  const session2 = new Session(
+    new ConfigBuilder()
+      .host('localhost')
+      .port(6667)
+      .username('root')
+      .password('root')
+      .fetchSize(1024)
+      .build()
+  );
+
+  // For demo purposes, we'll use session1
+  const session = session1;
+
   try {
     // Open the session
-    console.log('Opening session...');
+    console.log('\nOpening session...');
     await session.open();
     console.log('Session opened successfully');
 

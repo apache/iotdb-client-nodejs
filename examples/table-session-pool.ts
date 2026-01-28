@@ -2,14 +2,17 @@
  * TableSessionPool Example
  * 
  * This example demonstrates how to use TableSessionPool for table model
- * operations in IoTDB.
+ * operations in IoTDB, including explicit session management.
  */
 
-import { TableSessionPool } from '../src';
+import { TableSessionPool, PoolConfigBuilder } from '../src';
 
 async function main() {
-  // Create a table session pool
-  const pool = new TableSessionPool('localhost', 6667, {
+  console.log('=== TableSessionPool Example ===\n');
+
+  // Method 1: Traditional constructor (backward compatible)
+  console.log('Creating table session pool using traditional constructor...');
+  const pool1 = new TableSessionPool('localhost', 6667, {
     username: 'root',
     password: 'root',
     database: 'my_database', // Set default database
@@ -17,9 +20,26 @@ async function main() {
     minPoolSize: 2,
   });
 
+  // Method 2: Using Builder pattern (recommended)
+  console.log('Creating table session pool using Builder pattern...');
+  const pool2 = new TableSessionPool(
+    new PoolConfigBuilder()
+      .host('localhost')
+      .port(6667)
+      .username('root')
+      .password('root')
+      .database('my_database')
+      .maxPoolSize(10)
+      .minPoolSize(2)
+      .build()
+  );
+
+  // For demo purposes, we'll use pool1
+  const pool = pool1;
+
   try {
     // Initialize the pool
-    console.log('Initializing table session pool...');
+    console.log('\nInitializing table session pool...');
     await pool.init();
     console.log('Table pool initialized with', pool.getPoolSize(), 'connections');
 
@@ -27,13 +47,14 @@ async function main() {
     console.log('\nSetting up database...');
     await pool.executeNonQueryStatement('CREATE DATABASE IF NOT EXISTS root.table_example');
 
-    // Execute queries in table mode
-    console.log('\nExecuting table queries...');
+    // Approach 1: Using pool methods directly (automatic session management)
+    console.log('\n--- Approach 1: Automatic session management ---');
+    console.log('Executing table queries...');
     const result = await pool.executeQueryStatement('SHOW DATABASES');
     console.log('Databases found:', result.rows.length);
 
     // Insert data
-    console.log('\nInserting data...');
+    console.log('Inserting data...');
     await pool.insertTablet({
       deviceId: 'root.table_example.table1',
       measurements: ['column1', 'column2'],
@@ -43,10 +64,39 @@ async function main() {
     });
     console.log('Data inserted');
 
+    // Approach 2: Explicit session management
+    console.log('\n--- Approach 2: Explicit session management ---');
+    console.log('Getting a session from the pool...');
+    const session = await pool.getSession();
+    
+    try {
+      console.log('Executing operations with explicit session...');
+      
+      // Query with explicit session
+      const queryResult = await session.executeQueryStatement('SHOW DATABASES');
+      console.log('Query result:', queryResult.rows.length, 'rows');
+      
+      // Insert with explicit session
+      await session.insertTablet({
+        deviceId: 'root.table_example.table1',
+        measurements: ['column1', 'column2'],
+        dataTypes: [1, 3], // INT32, FLOAT
+        timestamps: [Date.now() + 1000],
+        values: [[200, 30.5]],
+      });
+      console.log('Data inserted via explicit session');
+      
+    } finally {
+      // Always release the session back to the pool
+      pool.releaseSession(session);
+      console.log('Session released back to the pool');
+    }
+
     // Pool statistics
     console.log('\nTable pool statistics:');
     console.log('Total connections:', pool.getPoolSize());
     console.log('Available connections:', pool.getAvailableSize());
+    console.log('In-use connections:', pool.getInUseSize());
 
   } catch (error) {
     console.error('Error:', error);
