@@ -13,7 +13,7 @@ module.exports = {
   verbose: true,
   // detectOpenHandles: true, // Enable this flag to debug hanging tests
   // Force exit after all tests complete to avoid hanging on unclosed resources
-  forceExit: true,
+  // forceExit: true,
   // Run tests sequentially to avoid database conflicts
   // Multiple tests share the same database names (root.test for tree model, test for table model)
   maxWorkers: 1, // Run tests one at a time

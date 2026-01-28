@@ -173,6 +173,11 @@ export abstract class BaseSessionPool {
         }
         reject(new Error("Timeout waiting for available session"));
       }, waitTimeout);
+      
+      // Use unref() so timeout doesn't prevent process exit
+      if (typeof timeoutId === 'object' && 'unref' in timeoutId) {
+        timeoutId.unref();
+      }
 
       this.waitQueue.push((session: Session) => {
         clearTimeout(timeoutId);

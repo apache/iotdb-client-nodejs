@@ -85,6 +85,16 @@ export class Connection {
         this.isConnected = false;
       });
 
+      // Unref the underlying socket to allow process exit
+      // This prevents the connection from keeping the process alive
+      if (this.connection && (this.connection as any).connection) {
+        const socket = (this.connection as any).connection;
+        if (socket && typeof socket.unref === 'function') {
+          socket.unref();
+          logger.debug("Socket unref'd to allow process exit");
+        }
+      }
+
       this.client = thrift.createClient(IClientRPCService, this.connection);
 
       await this.openSession();
@@ -182,6 +192,10 @@ export class Connection {
             timeoutHandle = setTimeout(() => {
               reject(new Error("Close session timeout"));
             }, 5000);
+            // Use unref() so timeout doesn't prevent process exit
+            if (timeoutHandle && typeof timeoutHandle === 'object' && 'unref' in timeoutHandle) {
+              timeoutHandle.unref();
+            }
           }),
         ]).catch((error) => {
           // Clear timeout if it's still active
