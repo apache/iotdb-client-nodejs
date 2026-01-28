@@ -448,7 +448,6 @@ interface EndPoint {
 #### PoolConfig
 ```typescript
 interface PoolConfig extends Config {
-  nodeUrls?: EndPoint[];  // For multi-node pools with different ports
   maxPoolSize?: number;
   minPoolSize?: number;
   maxIdleTime?: number;

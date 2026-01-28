@@ -17,6 +17,11 @@
  * under the License.
  */
 
+export interface EndPoint {
+  host: string;
+  port: number;
+}
+
 export interface Config {
   host?: string;
   port?: number;
@@ -37,17 +42,11 @@ export interface SSLOptions {
   rejectUnauthorized?: boolean;
 }
 
-export interface PoolConfig extends Omit<Config, 'nodeUrls'> {
-  nodeUrls?: EndPoint[];
+export interface PoolConfig extends Config {
   maxPoolSize?: number;
   minPoolSize?: number;
   maxIdleTime?: number;
   waitTimeout?: number;
-}
-
-export interface EndPoint {
-  host: string;
-  port: number;
 }
 
 export const DEFAULT_CONFIG: Partial<Config> = {

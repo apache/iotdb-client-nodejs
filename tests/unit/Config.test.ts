@@ -102,6 +102,17 @@ describe('Config', () => {
     expect(config.nodeUrls?.[0].host).toBe('node1.example.com');
     expect(config.nodeUrls?.[1].port).toBe(6668);
   });
+
+  test('Should validate empty nodeUrls array', () => {
+    const config: Partial<Config> = {
+      nodeUrls: [],
+      username: 'root',
+      password: 'root',
+    };
+
+    expect(config.nodeUrls).toBeDefined();
+    expect(config.nodeUrls?.length).toBe(0);
+  });
 });
 
 describe('ConfigBuilder', () => {

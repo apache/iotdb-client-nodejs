@@ -52,6 +52,10 @@ export class Session {
       throw new Error('Port is required when host is provided');
     }
 
+    if (config.nodeUrls && config.nodeUrls.length === 0) {
+      throw new Error('nodeUrls array cannot be empty');
+    }
+
     // If nodeUrls is provided, use the first node for single session
     if (config.nodeUrls && config.nodeUrls.length > 0) {
       const firstNode = config.nodeUrls[0];

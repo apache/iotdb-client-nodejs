@@ -50,7 +50,10 @@ export abstract class BaseSessionPool {
       const poolConfig = hostsOrConfig as PoolConfig;
       this.config = { ...DEFAULT_POOL_CONFIG, ...poolConfig } as PoolConfig;
       
-      if (poolConfig.nodeUrls && poolConfig.nodeUrls.length > 0) {
+      if (poolConfig.nodeUrls) {
+        if (poolConfig.nodeUrls.length === 0) {
+          throw new Error('nodeUrls array cannot be empty');
+        }
         this.endPoints = poolConfig.nodeUrls;
       } else if (poolConfig.host && poolConfig.port) {
         this.endPoints = [{ host: poolConfig.host, port: poolConfig.port }];
