@@ -10,13 +10,13 @@ import { SessionPool, PoolConfigBuilder } from '../src';
 async function main() {
   console.log('=== Multi-Node Example ===\n');
 
-  // Method 1: Using nodeUrls directly in constructor
-  console.log('Method 1: Using nodeUrls in config object');
+  // Method 1: Using nodeUrls with string array format (RECOMMENDED)
+  console.log('Method 1: Using nodeUrls in string array format (host:port)');
   const pool1 = new SessionPool({
     nodeUrls: [
-      { host: 'node1.example.com', port: 6667 },
-      { host: 'node2.example.com', port: 6668 },
-      { host: 'node3.example.com', port: 6669 },
+      'node1.example.com:6667',
+      'node2.example.com:6668',
+      'node3.example.com:6669',
     ],
     username: 'root',
     password: 'root',
@@ -24,14 +24,14 @@ async function main() {
     minPoolSize: 3,  // 1 connection per node initially
   });
 
-  // Method 2: Using Builder pattern (recommended)
-  console.log('Method 2: Using Builder pattern');
+  // Method 2: Using Builder pattern with string array format (RECOMMENDED)
+  console.log('Method 2: Using Builder pattern with string array');
   const pool2 = new SessionPool(
     new PoolConfigBuilder()
       .nodeUrls([
-        { host: 'node1.example.com', port: 6667 },
-        { host: 'node2.example.com', port: 6668 },
-        { host: 'node3.example.com', port: 6669 },
+        'node1.example.com:6667',
+        'node2.example.com:6668',
+        'node3.example.com:6669',
       ])
       .username('root')
       .password('root')
@@ -40,9 +40,23 @@ async function main() {
       .build()
   );
 
-  // Method 3: Backward compatible - same port for all hosts
-  console.log('Method 3: Backward compatible (same port for all hosts)');
-  const pool3 = new SessionPool(
+  // Method 3: Using nodeUrls with object format (also supported)
+  console.log('Method 3: Using nodeUrls in object format');
+  const pool3 = new SessionPool({
+    nodeUrls: [
+      { host: 'node1.example.com', port: 6667 },
+      { host: 'node2.example.com', port: 6668 },
+      { host: 'node3.example.com', port: 6669 },
+    ],
+    username: 'root',
+    password: 'root',
+    maxPoolSize: 15,
+    minPoolSize: 3,
+  });
+
+  // Method 4: Backward compatible - same port for all hosts
+  console.log('Method 4: Backward compatible (same port for all hosts)');
+  const pool4 = new SessionPool(
     [
       'node1.example.com',
       'node2.example.com',

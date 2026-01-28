@@ -22,10 +22,29 @@ export interface EndPoint {
   port: number;
 }
 
+/**
+ * Parse nodeUrls from string array format (e.g., ["host1:6667", "host2:6668"])
+ * to EndPoint array format
+ */
+export function parseNodeUrls(nodeUrls: string[]): EndPoint[] {
+  return nodeUrls.map((url) => {
+    const parts = url.split(':');
+    if (parts.length !== 2) {
+      throw new Error(`Invalid nodeUrl format: ${url}. Expected format: "host:port"`);
+    }
+    const host = parts[0].trim();
+    const port = parseInt(parts[1].trim(), 10);
+    if (!host || isNaN(port) || port <= 0 || port > 65535) {
+      throw new Error(`Invalid nodeUrl format: ${url}. Host must be non-empty and port must be a valid number (1-65535)`);
+    }
+    return { host, port };
+  });
+}
+
 export interface Config {
   host?: string;
   port?: number;
-  nodeUrls?: EndPoint[];
+  nodeUrls?: string[] | EndPoint[];
   username?: string;
   password?: string;
   database?: string;
@@ -86,7 +105,7 @@ export class ConfigBuilder {
     return this;
   }
 
-  nodeUrls(nodeUrls: EndPoint[]): this {
+  nodeUrls(nodeUrls: string[] | EndPoint[]): this {
     this.config.nodeUrls = nodeUrls;
     return this;
   }
@@ -152,7 +171,7 @@ export class PoolConfigBuilder extends ConfigBuilder {
     return this;
   }
 
-  override nodeUrls(nodeUrls: EndPoint[]): this {
+  override nodeUrls(nodeUrls: string[] | EndPoint[]): this {
     this.poolConfig.nodeUrls = nodeUrls;
     return this;
   }

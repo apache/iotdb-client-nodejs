@@ -170,19 +170,19 @@ await pool.close();
 
 ### Multi-Node Support
 
-#### Method 1: Using nodeUrls (Recommended for Different Ports)
+#### Method 1: Using nodeUrls with String Format (Recommended)
 
-When nodes have different host:port combinations, use the `nodeUrls` configuration:
+When nodes have different host:port combinations, use the `nodeUrls` configuration with string array format:
 
 ```typescript
 import { SessionPool, PoolConfigBuilder } from 'iotdb-client-nodejs';
 
-// Using config object
+// Using config object with string array (RECOMMENDED)
 const pool1 = new SessionPool({
   nodeUrls: [
-    { host: 'node1.example.com', port: 6667 },
-    { host: 'node2.example.com', port: 6668 },
-    { host: 'node3.example.com', port: 6669 },
+    'node1.example.com:6667',
+    'node2.example.com:6668',
+    'node3.example.com:6669',
   ],
   username: 'root',
   password: 'root',
@@ -190,13 +190,13 @@ const pool1 = new SessionPool({
   minPoolSize: 3,
 });
 
-// Or using Builder pattern
+// Or using Builder pattern with string array
 const pool2 = new SessionPool(
   new PoolConfigBuilder()
     .nodeUrls([
-      { host: 'node1.example.com', port: 6667 },
-      { host: 'node2.example.com', port: 6668 },
-      { host: 'node3.example.com', port: 6669 },
+      'node1.example.com:6667',
+      'node2.example.com:6668',
+      'node3.example.com:6669',
     ])
     .username('root')
     .password('root')
@@ -209,7 +209,24 @@ await pool1.init();
 // Connections will be distributed across all nodes using round-robin
 ```
 
-#### Method 2: Traditional API (For Same Port)
+#### Method 2: Using nodeUrls with Object Format (Also Supported)
+
+You can also use the object format for `nodeUrls`:
+
+```typescript
+const pool = new SessionPool({
+  nodeUrls: [
+    { host: 'node1.example.com', port: 6667 },
+    { host: 'node2.example.com', port: 6668 },
+    { host: 'node3.example.com', port: 6669 },
+  ],
+  username: 'root',
+  password: 'root',
+  maxPoolSize: 15,
+});
+```
+
+#### Method 3: Traditional API (For Same Port)
 
 When all nodes share the same port:
 
@@ -424,7 +441,7 @@ Same constructor options as SessionPool.
 interface Config {
   host?: string;
   port?: number;
-  nodeUrls?: EndPoint[];  // Alternative to host/port for multi-node
+  nodeUrls?: string[] | EndPoint[];  // String array format: ["host1:6667", "host2:6668"]
   username?: string;
   password?: string;
   database?: string;
@@ -435,7 +452,9 @@ interface Config {
 }
 ```
 
-**Note:** Either `host`/`port` OR `nodeUrls` must be provided. Use `nodeUrls` when nodes have different ports.
+**Note:** Either `host`/`port` OR `nodeUrls` must be provided. 
+- Use `nodeUrls` in string array format (e.g., `["host1:6667", "host2:6668"]`) for nodes with different ports (RECOMMENDED)
+- Object format `[{ host, port }]` is also supported for backward compatibility
 
 #### EndPoint
 ```typescript
@@ -504,7 +523,20 @@ const pool = new SessionPool(
 );
 ```
 
-**New way** (supports different ports per node):
+**New way** (supports different ports per node with string format - RECOMMENDED):
+```typescript
+const pool = new SessionPool({
+  nodeUrls: [
+    'node1:6667',
+    'node2:6668',
+    'node3:6669',
+  ],
+  username: 'root',
+  password: 'root',
+});
+```
+
+**Alternative** (object format also supported):
 ```typescript
 const pool = new SessionPool({
   nodeUrls: [

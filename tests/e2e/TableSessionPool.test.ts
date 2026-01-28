@@ -235,4 +235,61 @@ describe('TableSessionPool E2E Tests', () => {
     expect(availableSize).toBeGreaterThanOrEqual(0);
     expect(availableSize).toBeLessThanOrEqual(poolSize);
   });
+
+  test('Should support explicit session management with getSession/releaseSession', async () => {
+    if (!isConnected) {
+      console.log('Skipping test - no IoTDB connection');
+      return;
+    }
+
+    // Get a session from the pool
+    const session = await pool.getSession();
+    expect(session).toBeDefined();
+    expect(session.isOpen()).toBe(true);
+
+    try {
+      // Execute operations with the explicit session
+      const result = await session.executeQueryStatement('SHOW DATABASES');
+      expect(result).toBeDefined();
+      expect(result.columns).toBeDefined();
+
+      // Session should still be open
+      expect(session.isOpen()).toBe(true);
+    } finally {
+      // Release the session back to the pool
+      pool.releaseSession(session);
+    }
+
+    // Verify session is back in pool
+    expect(pool.getAvailableSize()).toBeGreaterThan(0);
+  });
+
+  test('Should support nodeUrls in string format', async () => {
+    if (!isConnected) {
+      console.log('Skipping test - no IoTDB connection');
+      return;
+    }
+
+    // Create a table pool using nodeUrls in string format
+    const stringNodeUrlsPool = new TableSessionPool({
+      nodeUrls: [`${IOTDB_HOST}:${IOTDB_PORT}`],
+      username: IOTDB_USER,
+      password: IOTDB_PASSWORD,
+      database: 'test1',
+      maxPoolSize: 3,
+      minPoolSize: 1,
+    });
+
+    try {
+      await stringNodeUrlsPool.init();
+      expect(stringNodeUrlsPool.getPoolSize()).toBeGreaterThanOrEqual(1);
+
+      const result = await stringNodeUrlsPool.executeQueryStatement('SHOW DATABASES');
+      expect(result).toBeDefined();
+      
+      console.log('TableSessionPool with string format nodeUrls working correctly');
+    } finally {
+      await stringNodeUrlsPool.close();
+    }
+  });
 });

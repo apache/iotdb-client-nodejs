@@ -24,7 +24,8 @@ import {
   PoolConfig,
   ConfigBuilder,
   PoolConfigBuilder,
-  EndPoint
+  EndPoint,
+  parseNodeUrls
 } from '../../src/utils/Config';
 
 describe('Config', () => {
@@ -103,6 +104,24 @@ describe('Config', () => {
     expect(config.nodeUrls?.[1].port).toBe(6668);
   });
 
+  test('Should support nodeUrls in string array format', () => {
+    const nodeUrls: string[] = [
+      'node1.example.com:6667',
+      'node2.example.com:6668',
+      'node3.example.com:6669',
+    ];
+
+    const config: Partial<Config> = {
+      nodeUrls,
+      username: 'root',
+      password: 'root',
+    };
+
+    expect(config.nodeUrls).toBeDefined();
+    expect(config.nodeUrls?.length).toBe(3);
+    expect(config.nodeUrls?.[0]).toBe('node1.example.com:6667');
+  });
+
   test('Should validate empty nodeUrls array', () => {
     const config: Partial<Config> = {
       nodeUrls: [],
@@ -112,6 +131,61 @@ describe('Config', () => {
 
     expect(config.nodeUrls).toBeDefined();
     expect(config.nodeUrls?.length).toBe(0);
+  });
+});
+
+describe('parseNodeUrls', () => {
+  test('Should parse valid nodeUrls string array', () => {
+    const nodeUrls = [
+      'localhost:6667',
+      'node1:6668',
+      'node2.example.com:6669',
+    ];
+
+    const parsed = parseNodeUrls(nodeUrls);
+
+    expect(parsed).toHaveLength(3);
+    expect(parsed[0]).toEqual({ host: 'localhost', port: 6667 });
+    expect(parsed[1]).toEqual({ host: 'node1', port: 6668 });
+    expect(parsed[2]).toEqual({ host: 'node2.example.com', port: 6669 });
+  });
+
+  test('Should throw error for invalid format - no colon', () => {
+    const nodeUrls = ['localhost6667'];
+    
+    expect(() => parseNodeUrls(nodeUrls)).toThrow('Invalid nodeUrl format');
+  });
+
+  test('Should throw error for invalid format - multiple colons', () => {
+    const nodeUrls = ['localhost:6667:extra'];
+    
+    expect(() => parseNodeUrls(nodeUrls)).toThrow('Invalid nodeUrl format');
+  });
+
+  test('Should throw error for empty host', () => {
+    const nodeUrls = [':6667'];
+    
+    expect(() => parseNodeUrls(nodeUrls)).toThrow('Invalid nodeUrl format');
+  });
+
+  test('Should throw error for invalid port', () => {
+    const nodeUrls = ['localhost:abc'];
+    
+    expect(() => parseNodeUrls(nodeUrls)).toThrow('Invalid nodeUrl format');
+  });
+
+  test('Should throw error for port out of range', () => {
+    const nodeUrls = ['localhost:70000'];
+    
+    expect(() => parseNodeUrls(nodeUrls)).toThrow('Invalid nodeUrl format');
+  });
+
+  test('Should handle whitespace in nodeUrls', () => {
+    const nodeUrls = [' localhost : 6667 '];
+    
+    const parsed = parseNodeUrls(nodeUrls);
+    
+    expect(parsed[0]).toEqual({ host: 'localhost', port: 6667 });
   });
 });
 
@@ -134,6 +208,23 @@ describe('ConfigBuilder', () => {
     const nodeUrls: EndPoint[] = [
       { host: 'node1', port: 6667 },
       { host: 'node2', port: 6668 },
+    ];
+
+    const config = new ConfigBuilder()
+      .nodeUrls(nodeUrls)
+      .username('admin')
+      .password('admin123')
+      .build();
+
+    expect(config.nodeUrls).toEqual(nodeUrls);
+    expect(config.username).toBe('admin');
+    expect(config.password).toBe('admin123');
+  });
+
+  test('Should build config with nodeUrls in string format', () => {
+    const nodeUrls: string[] = [
+      'node1:6667',
+      'node2:6668',
     ];
 
     const config = new ConfigBuilder()

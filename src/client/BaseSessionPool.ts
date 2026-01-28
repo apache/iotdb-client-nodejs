@@ -18,7 +18,7 @@
  */
 
 import { Session, QueryResult, Tablet } from './Session';
-import { PoolConfig, DEFAULT_POOL_CONFIG, EndPoint } from '../utils/Config';
+import { PoolConfig, DEFAULT_POOL_CONFIG, EndPoint, parseNodeUrls } from '../utils/Config';
 import { logger } from '../utils/Logger';
 
 interface PooledSession {
@@ -54,7 +54,10 @@ export abstract class BaseSessionPool {
         if (poolConfig.nodeUrls.length === 0) {
           throw new Error('nodeUrls array cannot be empty');
         }
-        this.endPoints = poolConfig.nodeUrls;
+        // Parse nodeUrls if in string format
+        this.endPoints = typeof poolConfig.nodeUrls[0] === 'string'
+          ? parseNodeUrls(poolConfig.nodeUrls as string[])
+          : poolConfig.nodeUrls as EndPoint[];
       } else if (poolConfig.host && poolConfig.port) {
         this.endPoints = [{ host: poolConfig.host, port: poolConfig.port }];
       } else {

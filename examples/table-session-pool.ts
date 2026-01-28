@@ -2,7 +2,7 @@
  * TableSessionPool Example
  * 
  * This example demonstrates how to use TableSessionPool for table model
- * operations in IoTDB, including explicit session management.
+ * operations in IoTDB, including explicit session management and nodeUrls.
  */
 
 import { TableSessionPool, PoolConfigBuilder } from '../src';
@@ -11,7 +11,7 @@ async function main() {
   console.log('=== TableSessionPool Example ===\n');
 
   // Method 1: Traditional constructor (backward compatible)
-  console.log('Creating table session pool using traditional constructor...');
+  console.log('Method 1: Traditional constructor');
   const pool1 = new TableSessionPool('localhost', 6667, {
     username: 'root',
     password: 'root',
@@ -21,11 +21,39 @@ async function main() {
   });
 
   // Method 2: Using Builder pattern (recommended)
-  console.log('Creating table session pool using Builder pattern...');
+  console.log('Method 2: Using Builder pattern');
   const pool2 = new TableSessionPool(
     new PoolConfigBuilder()
       .host('localhost')
       .port(6667)
+      .username('root')
+      .password('root')
+      .database('my_database')
+      .maxPoolSize(10)
+      .minPoolSize(2)
+      .build()
+  );
+
+  // Method 3: Using nodeUrls with string format (for multi-node)
+  console.log('Method 3: Using nodeUrls in string format');
+  const pool3 = new TableSessionPool({
+    nodeUrls: [
+      'node1:6667',
+      'node2:6668',
+      'node3:6669',
+    ],
+    username: 'root',
+    password: 'root',
+    database: 'my_database',
+    maxPoolSize: 10,
+    minPoolSize: 2,
+  });
+
+  // Method 4: Using Builder with nodeUrls
+  console.log('Method 4: Using Builder with nodeUrls');
+  const pool4 = new TableSessionPool(
+    new PoolConfigBuilder()
+      .nodeUrls(['node1:6667', 'node2:6668', 'node3:6669'])
       .username('root')
       .password('root')
       .database('my_database')

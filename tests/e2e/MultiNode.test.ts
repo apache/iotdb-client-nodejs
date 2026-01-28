@@ -298,7 +298,40 @@ describe('Multi-Node E2E Tests', () => {
       return;
     }
 
-    // Create a pool using nodeUrls (new API)
+    // Create a pool using nodeUrls in string format (RECOMMENDED)
+    const nodeUrlsPool = new SessionPool({
+      nodeUrls: [
+        `${IOTDB_HOST}:${IOTDB_PORT_1}`,
+        `${IOTDB_HOST}:${IOTDB_PORT_2}`,
+        `${IOTDB_HOST}:${IOTDB_PORT_3}`,
+      ],
+      username: IOTDB_USER,
+      password: IOTDB_PASSWORD,
+      maxPoolSize: 6,
+      minPoolSize: 3,
+    });
+
+    try {
+      await nodeUrlsPool.init();
+      expect(nodeUrlsPool.getPoolSize()).toBeGreaterThanOrEqual(3);
+
+      // Execute a query to verify it works
+      const result = await nodeUrlsPool.executeQueryStatement('SHOW DATABASES');
+      expect(result.rows).toBeDefined();
+      
+      console.log('nodeUrls string format configuration working correctly');
+    } finally {
+      await nodeUrlsPool.close();
+    }
+  });
+
+  test('Should support nodeUrls configuration in object format', async () => {
+    if (!IS_MULTI_NODE) {
+      console.log('Skipping test - not in multi-node environment');
+      return;
+    }
+
+    // Create a pool using nodeUrls in object format (also supported)
     const nodeUrlsPool = new SessionPool({
       nodeUrls: [
         { host: IOTDB_HOST, port: IOTDB_PORT_1 },
@@ -319,7 +352,7 @@ describe('Multi-Node E2E Tests', () => {
       const result = await nodeUrlsPool.executeQueryStatement('SHOW DATABASES');
       expect(result.rows).toBeDefined();
       
-      console.log('nodeUrls configuration working correctly');
+      console.log('nodeUrls object format configuration working correctly');
     } finally {
       await nodeUrlsPool.close();
     }
