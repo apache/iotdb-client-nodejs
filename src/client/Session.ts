@@ -43,10 +43,23 @@ export class Session {
   protected connection: Connection;
 
   constructor(config: Config) {
-    if (!config.host || !config.port) {
-      throw new Error('Host and port are required');
+    // Validate config - either host/port or nodeUrls must be provided
+    if (!config.host && !config.nodeUrls) {
+      throw new Error('Either host/port or nodeUrls must be provided');
     }
-    this.config = { ...DEFAULT_CONFIG, ...config } as Config;
+    
+    if (config.host && !config.port) {
+      throw new Error('Port is required when host is provided');
+    }
+
+    // If nodeUrls is provided, use the first node for single session
+    if (config.nodeUrls && config.nodeUrls.length > 0) {
+      const firstNode = config.nodeUrls[0];
+      this.config = { ...DEFAULT_CONFIG, ...config, host: firstNode.host, port: firstNode.port } as Config;
+    } else {
+      this.config = { ...DEFAULT_CONFIG, ...config } as Config;
+    }
+    
     this.connection = new Connection(this.config);
   }
 

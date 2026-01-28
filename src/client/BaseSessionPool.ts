@@ -40,15 +40,34 @@ export abstract class BaseSessionPool {
   protected cleanupInterval: NodeJS.Timeout | null = null;
 
   constructor(
-    hosts: string | string[],
-    port: number,
-    config: Partial<PoolConfig> = {}
+    hostsOrConfig: string | string[] | PoolConfig,
+    port?: number,
+    config?: Partial<PoolConfig>
   ) {
-    this.config = { ...DEFAULT_POOL_CONFIG, ...config, port } as PoolConfig;
-
-    // Support multiple nodes
-    const hostList = Array.isArray(hosts) ? hosts : [hosts];
-    this.endPoints = hostList.map((host) => ({ host, port }));
+    // Handle different constructor signatures for backward compatibility
+    if (typeof hostsOrConfig === 'object' && !Array.isArray(hostsOrConfig)) {
+      // New format: constructor(config: PoolConfig)
+      const poolConfig = hostsOrConfig as PoolConfig;
+      this.config = { ...DEFAULT_POOL_CONFIG, ...poolConfig } as PoolConfig;
+      
+      if (poolConfig.nodeUrls && poolConfig.nodeUrls.length > 0) {
+        this.endPoints = poolConfig.nodeUrls;
+      } else if (poolConfig.host && poolConfig.port) {
+        this.endPoints = [{ host: poolConfig.host, port: poolConfig.port }];
+      } else {
+        throw new Error('Either nodeUrls or host/port must be provided in config');
+      }
+    } else {
+      // Old format: constructor(hosts: string | string[], port: number, config?: Partial<PoolConfig>)
+      if (port === undefined) {
+        throw new Error('Port must be provided when using host-based constructor');
+      }
+      
+      this.config = { ...DEFAULT_POOL_CONFIG, ...config, port } as PoolConfig;
+      
+      const hostList = Array.isArray(hostsOrConfig) ? hostsOrConfig : [hostsOrConfig];
+      this.endPoints = hostList.map((host) => ({ host, port }));
+    }
 
     logger.info(
       `${this.getPoolName()} created with ${this.endPoints.length} endpoints, max pool size: ${this.config.maxPoolSize}`
@@ -102,7 +121,11 @@ export abstract class BaseSessionPool {
     return endPoint;
   }
 
-  protected async getSession(): Promise<Session> {
+  /**
+   * Get a session from the pool
+   * The session must be released back to the pool using releaseSession() after use
+   */
+  async getSession(): Promise<Session> {
     // Try to find an available session
     const available = this.pool.find((ps) => !ps.inUse && ps.session.isOpen());
     if (available) {
@@ -139,7 +162,11 @@ export abstract class BaseSessionPool {
     });
   }
 
-  protected releaseSession(session: Session): void {
+  /**
+   * Release a session back to the pool
+   * Should be called after getSession() when the session is no longer needed
+   */
+  releaseSession(session: Session): void {
     const pooledSession = this.pool.find((ps) => ps.session === session);
     if (pooledSession) {
       pooledSession.inUse = false;

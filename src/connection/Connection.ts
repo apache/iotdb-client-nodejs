@@ -38,6 +38,10 @@ export class Connection {
 
   async open(): Promise<void> {
     try {
+      if (!this.config.host || !this.config.port) {
+        throw new Error('Host and port are required for connection');
+      }
+
       logger.debug(`Connecting to ${this.config.host}:${this.config.port}`);
 
       const options: any = {

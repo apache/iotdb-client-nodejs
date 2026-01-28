@@ -18,8 +18,9 @@
  */
 
 export interface Config {
-  host: string;
-  port: number;
+  host?: string;
+  port?: number;
+  nodeUrls?: EndPoint[];
   username?: string;
   password?: string;
   database?: string;
@@ -36,7 +37,8 @@ export interface SSLOptions {
   rejectUnauthorized?: boolean;
 }
 
-export interface PoolConfig extends Config {
+export interface PoolConfig extends Omit<Config, 'nodeUrls'> {
+  nodeUrls?: EndPoint[];
   maxPoolSize?: number;
   minPoolSize?: number;
   maxIdleTime?: number;
@@ -64,3 +66,154 @@ export const DEFAULT_POOL_CONFIG: Partial<PoolConfig> = {
   maxIdleTime: 60000, // 60 seconds
   waitTimeout: 60000, // 60 seconds
 };
+
+/**
+ * Builder class for constructing Session and SessionPool configurations
+ */
+export class ConfigBuilder {
+  private config: Partial<Config>;
+
+  constructor() {
+    this.config = { ...DEFAULT_CONFIG };
+  }
+
+  host(host: string): this {
+    this.config.host = host;
+    return this;
+  }
+
+  port(port: number): this {
+    this.config.port = port;
+    return this;
+  }
+
+  nodeUrls(nodeUrls: EndPoint[]): this {
+    this.config.nodeUrls = nodeUrls;
+    return this;
+  }
+
+  username(username: string): this {
+    this.config.username = username;
+    return this;
+  }
+
+  password(password: string): this {
+    this.config.password = password;
+    return this;
+  }
+
+  database(database: string): this {
+    this.config.database = database;
+    return this;
+  }
+
+  timezone(timezone: string): this {
+    this.config.timezone = timezone;
+    return this;
+  }
+
+  fetchSize(fetchSize: number): this {
+    this.config.fetchSize = fetchSize;
+    return this;
+  }
+
+  enableSSL(enable: boolean): this {
+    this.config.enableSSL = enable;
+    return this;
+  }
+
+  sslOptions(sslOptions: SSLOptions): this {
+    this.config.sslOptions = sslOptions;
+    return this;
+  }
+
+  build(): Config {
+    return this.config as Config;
+  }
+}
+
+/**
+ * Builder class for constructing SessionPool configurations
+ */
+export class PoolConfigBuilder extends ConfigBuilder {
+  private poolConfig: Partial<PoolConfig>;
+
+  constructor() {
+    super();
+    this.poolConfig = { ...DEFAULT_POOL_CONFIG };
+  }
+
+  override host(host: string): this {
+    this.poolConfig.host = host;
+    return this;
+  }
+
+  override port(port: number): this {
+    this.poolConfig.port = port;
+    return this;
+  }
+
+  override nodeUrls(nodeUrls: EndPoint[]): this {
+    this.poolConfig.nodeUrls = nodeUrls;
+    return this;
+  }
+
+  override username(username: string): this {
+    this.poolConfig.username = username;
+    return this;
+  }
+
+  override password(password: string): this {
+    this.poolConfig.password = password;
+    return this;
+  }
+
+  override database(database: string): this {
+    this.poolConfig.database = database;
+    return this;
+  }
+
+  override timezone(timezone: string): this {
+    this.poolConfig.timezone = timezone;
+    return this;
+  }
+
+  override fetchSize(fetchSize: number): this {
+    this.poolConfig.fetchSize = fetchSize;
+    return this;
+  }
+
+  override enableSSL(enable: boolean): this {
+    this.poolConfig.enableSSL = enable;
+    return this;
+  }
+
+  override sslOptions(sslOptions: SSLOptions): this {
+    this.poolConfig.sslOptions = sslOptions;
+    return this;
+  }
+
+  maxPoolSize(size: number): this {
+    this.poolConfig.maxPoolSize = size;
+    return this;
+  }
+
+  minPoolSize(size: number): this {
+    this.poolConfig.minPoolSize = size;
+    return this;
+  }
+
+  maxIdleTime(time: number): this {
+    this.poolConfig.maxIdleTime = time;
+    return this;
+  }
+
+  waitTimeout(timeout: number): this {
+    this.poolConfig.waitTimeout = timeout;
+    return this;
+  }
+
+  override build(): PoolConfig {
+    return this.poolConfig as PoolConfig;
+  }
+}
