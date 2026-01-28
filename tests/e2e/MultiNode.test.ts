@@ -291,4 +291,37 @@ describe('Multi-Node E2E Tests', () => {
     expect(result3.rows.length).toBeGreaterThan(0);
     console.log(`Simultaneous queries across 3 DataNodes: DN1=${result1.rows.length}, DN2=${result2.rows.length}, DN3=${result3.rows.length} rows`);
   });
+
+  test('Should support nodeUrls configuration for multi-node setup', async () => {
+    if (!IS_MULTI_NODE) {
+      console.log('Skipping test - not in multi-node environment');
+      return;
+    }
+
+    // Create a pool using nodeUrls (new API)
+    const nodeUrlsPool = new SessionPool({
+      nodeUrls: [
+        { host: IOTDB_HOST, port: IOTDB_PORT_1 },
+        { host: IOTDB_HOST, port: IOTDB_PORT_2 },
+        { host: IOTDB_HOST, port: IOTDB_PORT_3 },
+      ],
+      username: IOTDB_USER,
+      password: IOTDB_PASSWORD,
+      maxPoolSize: 6,
+      minPoolSize: 3,
+    });
+
+    try {
+      await nodeUrlsPool.init();
+      expect(nodeUrlsPool.getPoolSize()).toBeGreaterThanOrEqual(3);
+
+      // Execute a query to verify it works
+      const result = await nodeUrlsPool.executeQueryStatement('SHOW DATABASES');
+      expect(result.rows).toBeDefined();
+      
+      console.log('nodeUrls configuration working correctly');
+    } finally {
+      await nodeUrlsPool.close();
+    }
+  });
 });

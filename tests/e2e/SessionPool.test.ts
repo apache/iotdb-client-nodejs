@@ -172,4 +172,83 @@ describe('SessionPool E2E Tests', () => {
     expect(availableSize).toBeGreaterThanOrEqual(0);
     expect(availableSize).toBeLessThanOrEqual(poolSize);
   });
+
+  test('Should support explicit session management with getSession/releaseSession', async () => {
+    if (!isConnected) {
+      console.log('Skipping test - no IoTDB connection');
+      return;
+    }
+
+    // Get a session from the pool
+    const session = await pool.getSession();
+    expect(session).toBeDefined();
+    expect(session.isOpen()).toBe(true);
+
+    // Track pool statistics
+    const inUseBefore = pool.getInUseSize();
+    const availableBefore = pool.getAvailableSize();
+
+    try {
+      // Execute operations with the explicit session
+      const result = await session.executeQueryStatement('SHOW DATABASES');
+      expect(result).toBeDefined();
+      expect(result.columns).toBeDefined();
+
+      // Session should still be open
+      expect(session.isOpen()).toBe(true);
+
+    } finally {
+      // Release the session back to the pool
+      pool.releaseSession(session);
+    }
+
+    // Verify pool statistics updated correctly
+    const inUseAfter = pool.getInUseSize();
+    const availableAfter = pool.getAvailableSize();
+    
+    expect(inUseAfter).toBe(inUseBefore - 1);
+    expect(availableAfter).toBe(availableBefore + 1);
+  });
+
+  test('Should handle multiple explicit sessions concurrently', async () => {
+    if (!isConnected) {
+      console.log('Skipping test - no IoTDB connection');
+      return;
+    }
+
+    const sessionPromises = [];
+    
+    // Get multiple sessions concurrently
+    for (let i = 0; i < 3; i++) {
+      sessionPromises.push(
+        pool.getSession().then(async (session) => {
+          try {
+            // Execute a query with this session
+            const result = await session.executeQueryStatement('SHOW DATABASES');
+            expect(result).toBeDefined();
+            return session;
+          } catch (error) {
+            pool.releaseSession(session);
+            throw error;
+          }
+        })
+      );
+    }
+
+    const sessions = await Promise.all(sessionPromises);
+    
+    // All sessions should be valid
+    expect(sessions.length).toBe(3);
+    sessions.forEach(session => {
+      expect(session.isOpen()).toBe(true);
+    });
+
+    // Release all sessions
+    sessions.forEach(session => {
+      pool.releaseSession(session);
+    });
+
+    // All sessions should be available again
+    expect(pool.getAvailableSize()).toBeGreaterThanOrEqual(3);
+  });
 });
