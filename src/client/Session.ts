@@ -185,7 +185,8 @@ export class Session {
   }
 
   private serializeColumn(values: any[], dataType: number): Buffer {
-    // TSDataType: BOOLEAN(0), INT32(1), INT64(2), FLOAT(3), DOUBLE(4), TEXT(5)
+    // TSDataType: BOOLEAN(0), INT32(1), INT64(2), FLOAT(3), DOUBLE(4), TEXT(5), 
+    //             BLOB(6), STRING(7), DATE(8), TIMESTAMP(9)
     switch (dataType) {
       case 0: // BOOLEAN
         return Buffer.from(values.map((v) => (v ? 1 : 0)));
@@ -199,7 +200,8 @@ export class Session {
       case 4: { // DOUBLE
         return Buffer.from(new Float64Array(values).buffer);
       }
-      case 5: { // TEXT
+      case 5: // TEXT
+      case 7: { // STRING (similar to TEXT)
         const strBuffers = values.map((v) => {
           const str = String(v);
           const len = Buffer.alloc(4);
@@ -207,6 +209,31 @@ export class Session {
           return Buffer.concat([len, Buffer.from(str, 'utf8')]);
         });
         return Buffer.concat(strBuffers);
+      }
+      case 6: { // BLOB
+        const blobBuffers = values.map((v) => {
+          const blob = Buffer.isBuffer(v) ? v : Buffer.from(v);
+          const len = Buffer.alloc(4);
+          len.writeInt32LE(blob.length);
+          return Buffer.concat([len, blob]);
+        });
+        return Buffer.concat(blobBuffers);
+      }
+      case 8: { // DATE (stored as INT32 - days since epoch)
+        return Buffer.from(new Int32Array(values.map(v => {
+          if (v instanceof Date) {
+            return Math.floor(v.getTime() / (24 * 60 * 60 * 1000));
+          }
+          return v;
+        })).buffer);
+      }
+      case 9: { // TIMESTAMP (stored as INT64 - milliseconds)
+        return Buffer.from(new BigInt64Array(values.map(v => {
+          if (v instanceof Date) {
+            return BigInt(v.getTime());
+          }
+          return BigInt(v);
+        })).buffer);
       }
       default:
         throw new Error(`Unsupported data type: ${dataType}`);
@@ -337,6 +364,10 @@ export class Session {
           else if (typeStr.includes('FLOAT')) dataType = 3;
           else if (typeStr.includes('DOUBLE')) dataType = 4;
           else if (typeStr.includes('TEXT')) dataType = 5;
+          else if (typeStr.includes('BLOB')) dataType = 6;
+          else if (typeStr.includes('STRING')) dataType = 7;
+          else if (typeStr.includes('DATE')) dataType = 8;
+          else if (typeStr.includes('TIMESTAMP')) dataType = 9;
         }
         
         logger.debug(`parseDataSet: column ${colIndex}, dataType = ${dataType}, valueBuffer.length = ${valueBuffer.length}`);
@@ -425,7 +456,8 @@ export class Session {
           }
           break;
         }
-        case 5: { // TEXT
+        case 5: // TEXT
+        case 7: { // STRING (similar to TEXT)
           let offset = 0;
           for (let i = 0; i < rowCount && offset < buffer.length; i++) {
             if (this.isNull(bitmap, i)) {
@@ -438,6 +470,51 @@ export class Session {
               const str = buffer.toString('utf8', offset, offset + strLength);
               values.push(str);
               offset += strLength;
+            }
+          }
+          break;
+        }
+        case 6: { // BLOB
+          let offset = 0;
+          for (let i = 0; i < rowCount && offset < buffer.length; i++) {
+            if (this.isNull(bitmap, i)) {
+              values.push(null);
+            } else {
+              if (offset + 4 > buffer.length) break;
+              const blobLength = buffer.readInt32LE(offset);
+              offset += 4;
+              if (offset + blobLength > buffer.length) break;
+              const blob = buffer.slice(offset, offset + blobLength);
+              values.push(blob);
+              offset += blobLength;
+            }
+          }
+          break;
+        }
+        case 8: { // DATE (stored as INT32 - days since epoch)
+          const int32Array = new Int32Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 4));
+          for (let i = 0; i < rowCount && i < int32Array.length; i++) {
+            if (this.isNull(bitmap, i)) {
+              values.push(null);
+            } else {
+              // Convert days since epoch to Date object
+              const days = int32Array[i];
+              const date = new Date(days * 24 * 60 * 60 * 1000);
+              values.push(date);
+            }
+          }
+          break;
+        }
+        case 9: { // TIMESTAMP (stored as INT64 - milliseconds)
+          const bigInt64Array = new BigInt64Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 8));
+          for (let i = 0; i < rowCount && i < bigInt64Array.length; i++) {
+            if (this.isNull(bitmap, i)) {
+              values.push(null);
+            } else {
+              // Convert milliseconds to Date object
+              const timestamp = Number(bigInt64Array[i]);
+              const date = new Date(timestamp);
+              values.push(date);
             }
           }
           break;

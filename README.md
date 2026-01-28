@@ -172,6 +172,14 @@ await tablePool.close();
 
 ## API Reference
 
+### Data Types
+
+IoTDB Node.js client supports all IoTDB data types including BOOLEAN, INT32, INT64, FLOAT, DOUBLE, TEXT, BLOB, STRING, DATE, and TIMESTAMP. See [DATA_TYPES.md](./DATA_TYPES.md) for comprehensive documentation on:
+- Type mappings between JavaScript and IoTDB
+- Usage examples for each data type
+- Best practices and encoding options
+- Null value handling
+
 ### Session
 
 #### Constructor
