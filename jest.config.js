@@ -14,11 +14,6 @@ module.exports = {
   // Performance optimizations
   maxWorkers: '50%', // Use half of available CPUs
   testTimeout: 60000, // Global timeout of 60s
-  transform: {
-    '^.+\\.ts$': ['ts-jest', {
-      isolatedModules: true, // Faster compilation by skipping type checking
-    }],
-  },
   // Cache configuration for faster subsequent runs
   cache: true,
   cacheDirectory: '<rootDir>/.jest-cache',
