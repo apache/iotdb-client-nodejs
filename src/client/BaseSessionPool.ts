@@ -115,7 +115,7 @@ export abstract class BaseSessionPool {
       this.cleanupIdleSessions().catch((error) => {
         logger.error("Error during scheduled session cleanup:", error);
       });
-    }, 30000); // Check every 30 seconds
+    }, 30000).unref(); // Check every 30 seconds
 
     logger.info(`${this.getPoolName()} initialized with ${minSize} sessions`);
   }
