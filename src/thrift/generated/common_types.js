@@ -13,88 +13,155 @@ var Int64 = require('node-int64');
 
 var ttypes = module.exports = {};
 ttypes.TConsensusGroupType = {
+  '0' : 'ConfigRegion',
   'ConfigRegion' : 0,
+  '1' : 'DataRegion',
   'DataRegion' : 1,
+  '2' : 'SchemaRegion',
   'SchemaRegion' : 2
 };
 ttypes.TRegionMigrateFailedType = {
+  '0' : 'AddPeerFailed',
   'AddPeerFailed' : 0,
+  '1' : 'RemovePeerFailed',
   'RemovePeerFailed' : 1,
+  '2' : 'RemoveConsensusGroupFailed',
   'RemoveConsensusGroupFailed' : 2,
+  '3' : 'DeleteRegionFailed',
   'DeleteRegionFailed' : 3,
+  '4' : 'CreateRegionFailed',
   'CreateRegionFailed' : 4,
+  '5' : 'Disconnect',
   'Disconnect' : 5
 };
 ttypes.TRegionMaintainTaskStatus = {
+  '0' : 'TASK_NOT_EXIST',
   'TASK_NOT_EXIST' : 0,
+  '1' : 'PROCESSING',
   'PROCESSING' : 1,
+  '2' : 'SUCCESS',
   'SUCCESS' : 2,
+  '3' : 'FAIL',
   'FAIL' : 3
 };
 ttypes.ThrottleType = {
+  '0' : 'REQUEST_NUMBER',
   'REQUEST_NUMBER' : 0,
+  '1' : 'REQUEST_SIZE',
   'REQUEST_SIZE' : 1,
+  '2' : 'WRITE_NUMBER',
   'WRITE_NUMBER' : 2,
+  '3' : 'WRITE_SIZE',
   'WRITE_SIZE' : 3,
+  '4' : 'READ_NUMBER',
   'READ_NUMBER' : 4,
+  '5' : 'READ_SIZE',
   'READ_SIZE' : 5
 };
 ttypes.TServiceType = {
+  '0' : 'ConfigNodeInternalService',
   'ConfigNodeInternalService' : 0,
+  '1' : 'DataNodeInternalService',
   'DataNodeInternalService' : 1,
+  '2' : 'DataNodeMPPService',
   'DataNodeMPPService' : 2,
+  '3' : 'DataNodeExternalService',
   'DataNodeExternalService' : 3
 };
 ttypes.TAggregationType = {
+  '0' : 'COUNT',
   'COUNT' : 0,
+  '1' : 'AVG',
   'AVG' : 1,
+  '2' : 'SUM',
   'SUM' : 2,
+  '3' : 'FIRST_VALUE',
   'FIRST_VALUE' : 3,
+  '4' : 'LAST_VALUE',
   'LAST_VALUE' : 4,
+  '5' : 'MAX_TIME',
   'MAX_TIME' : 5,
+  '6' : 'MIN_TIME',
   'MIN_TIME' : 6,
+  '7' : 'MAX_VALUE',
   'MAX_VALUE' : 7,
+  '8' : 'MIN_VALUE',
   'MIN_VALUE' : 8,
+  '9' : 'EXTREME',
   'EXTREME' : 9,
+  '10' : 'COUNT_IF',
   'COUNT_IF' : 10,
+  '11' : 'TIME_DURATION',
   'TIME_DURATION' : 11,
+  '12' : 'MODE',
   'MODE' : 12,
+  '13' : 'COUNT_TIME',
   'COUNT_TIME' : 13,
+  '14' : 'STDDEV',
   'STDDEV' : 14,
+  '15' : 'STDDEV_POP',
   'STDDEV_POP' : 15,
+  '16' : 'STDDEV_SAMP',
   'STDDEV_SAMP' : 16,
+  '17' : 'VARIANCE',
   'VARIANCE' : 17,
+  '18' : 'VAR_POP',
   'VAR_POP' : 18,
+  '19' : 'VAR_SAMP',
   'VAR_SAMP' : 19,
+  '20' : 'MAX_BY',
   'MAX_BY' : 20,
+  '21' : 'MIN_BY',
   'MIN_BY' : 21,
+  '22' : 'UDAF',
   'UDAF' : 22,
+  '23' : 'FIRST',
   'FIRST' : 23,
+  '24' : 'LAST',
   'LAST' : 24,
+  '25' : 'FIRST_BY',
   'FIRST_BY' : 25,
+  '26' : 'LAST_BY',
   'LAST_BY' : 26,
+  '27' : 'MIN',
   'MIN' : 27,
+  '28' : 'MAX',
   'MAX' : 28,
+  '29' : 'COUNT_ALL',
   'COUNT_ALL' : 29,
+  '30' : 'APPROX_COUNT_DISTINCT',
   'APPROX_COUNT_DISTINCT' : 30,
+  '31' : 'APPROX_MOST_FREQUENT',
   'APPROX_MOST_FREQUENT' : 31,
+  '32' : 'APPROX_PERCENTILE',
   'APPROX_PERCENTILE' : 32
 };
 ttypes.TrainingState = {
+  '0' : 'PENDING',
   'PENDING' : 0,
+  '1' : 'RUNNING',
   'RUNNING' : 1,
+  '2' : 'FINISHED',
   'FINISHED' : 2,
+  '3' : 'FAILED',
   'FAILED' : 3,
+  '4' : 'DROPPING',
   'DROPPING' : 4
 };
 ttypes.Model = {
+  '0' : 'TREE',
   'TREE' : 0,
+  '1' : 'TABLE',
   'TABLE' : 1
 };
 ttypes.FunctionType = {
+  '0' : 'NONE',
   'NONE' : 0,
+  '1' : 'SCALAR',
   'SCALAR' : 1,
+  '2' : 'AGGREGATE',
   'AGGREGATE' : 2,
+  '3' : 'TABLE',
   'TABLE' : 3
 };
 var TEndPoint = module.exports.TEndPoint = function(args) {

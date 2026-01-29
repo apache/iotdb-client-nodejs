@@ -17,9 +17,19 @@
  * under the License.
  */
 
+export const SQL_DIALECT_TREE = 'tree';
+export const SQL_DIALECT_TABLE = 'table';
+
 export interface EndPoint {
   host: string;
   port: number;
+}
+
+/**
+ * Internal config used by Connection class (includes internal-only fields)
+ */
+export interface InternalConfig extends Config {
+  sqlDialect?: string;
 }
 
 /**

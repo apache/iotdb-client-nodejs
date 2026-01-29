@@ -34,7 +34,7 @@ jobs:
         run: |
           docker compose -f docker-compose-1c1d.yml up -d
           echo "Waiting for IoTDB to be ready..."
-          sleep 45
+          sleep 5
       
       - name: Verify IoTDB ports are listening
         run: |
@@ -60,6 +60,16 @@ jobs:
         run: |
           set -o pipefail
           npm run test:e2e 2>&1 | tee test-results/test-output.log
+      
+      - name: Collect Docker logs on failure
+        if: failure()
+        run: |
+          echo "=== Collecting Docker logs ==="
+          mkdir -p test-results/docker-logs
+          docker compose -f docker-compose-1c1d.yml logs > test-results/docker-logs/all-containers.log
+          docker compose -f docker-compose-1c1d.yml logs iotdb-confignode > test-results/docker-logs/confignode.log
+          docker compose -f docker-compose-1c1d.yml logs iotdb-datanode > test-results/docker-logs/datanode.log
+          echo "Docker logs saved to test-results/docker-logs/"
           
       - name: Stop and clean up Docker Compose
         if: always()

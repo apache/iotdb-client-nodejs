@@ -19,6 +19,8 @@
 
 export { Session } from "./client/Session";
 export type { QueryResult, Tablet } from "./client/Session";
+export { SessionDataSet } from "./client/SessionDataSet";
+export { RowRecord } from "./client/RowRecord";
 export { SessionPool } from "./client/SessionPool";
 export { TableSessionPool } from "./client/TableSessionPool";
 export type { Config, PoolConfig, SSLOptions, EndPoint } from "./utils/Config";

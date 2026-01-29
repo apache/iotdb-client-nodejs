@@ -104,8 +104,13 @@ describe("Table Model All Data Types E2E Tests", () => {
     );
 
     // Verify table created
-    const result = await pool.executeQueryStatement("SHOW TABLES");
-    expect(result.rows.length).toBeGreaterThan(0);
+    const dataSet = await pool.executeQueryStatement("SHOW TABLES");
+    const rows = [];
+    for await (const row of dataSet) {
+      rows.push(row);
+    }
+    await dataSet.close();
+    expect(rows.length).toBeGreaterThan(0);
     console.log("Created table with all 10 data types in table model");
   }, 60000);
 
@@ -205,20 +210,25 @@ describe("Table Model All Data Types E2E Tests", () => {
     console.log("Inserted data with all 10 data types in table model");
 
     // Query data - table model supports WHERE clauses on tags
-    const result = await pool.executeQueryStatement(
+    const dataSet = await pool.executeQueryStatement(
       "SELECT * FROM all_types_table WHERE region = 'region1'",
     );
 
-    expect(result).toBeDefined();
-    expect(result.rows).toBeDefined();
-    expect(result.rows.length).toBeGreaterThanOrEqual(3);
+    expect(dataSet).toBeDefined();
+    const rows = [];
+    for await (const row of dataSet) {
+      rows.push(row);
+    }
+    await dataSet.close();
+    
+    expect(rows.length).toBeGreaterThanOrEqual(3);
 
-    console.log(`Retrieved ${result.rows.length} rows from table model`);
-    console.log("Sample row:", result.rows[0]);
+    console.log(`Retrieved ${rows.length} rows from table model`);
+    console.log("Sample row:", rows[0]);
 
     // Verify data types in results
-    const firstRow = result.rows[0];
-    expect(firstRow.length).toBeGreaterThan(10); // timestamp + tags + attributes + fields
+    const firstRow = rows[0];
+    expect(firstRow.getFields().length).toBeGreaterThan(10); // timestamp + tags + attributes + fields
 
     console.log("All 10 data types successfully tested in table model");
   }, 60000);
@@ -238,8 +248,13 @@ describe("Table Model All Data Types E2E Tests", () => {
     );
 
     // Verify table in current context
-    const result1 = await pool.executeQueryStatement("SHOW TABLES");
-    expect(result1.rows.length).toBeGreaterThanOrEqual(2);
+    const dataSet = await pool.executeQueryStatement("SHOW TABLES");
+    const rows = [];
+    for await (const row of dataSet) {
+      rows.push(row);
+    }
+    await dataSet.close();
+    expect(rows.length).toBeGreaterThanOrEqual(2);
 
     console.log("Multiple tables in same database verified");
   }, 60000);
@@ -251,22 +266,32 @@ describe("Table Model All Data Types E2E Tests", () => {
     }
 
     // Query with COUNT aggregation
-    const countResult = await pool.executeQueryStatement(
+    const countDataSet = await pool.executeQueryStatement(
       "SELECT COUNT(int32_field), COUNT(text_field) FROM all_types_table",
     );
 
-    expect(countResult.rows).toBeDefined();
-    expect(countResult.rows.length).toBeGreaterThan(0);
-    console.log("COUNT result:", countResult.rows[0]);
+    const countRows = [];
+    for await (const row of countDataSet) {
+      countRows.push(row);
+    }
+    await countDataSet.close();
+    
+    expect(countRows.length).toBeGreaterThan(0);
+    console.log("COUNT result:", countRows[0]);
 
     // Query with aggregation on numeric types
-    const aggResult = await pool.executeQueryStatement(
+    const aggDataSet = await pool.executeQueryStatement(
       "SELECT AVG(float_field), MAX(int32_field), MIN(double_field) FROM all_types_table",
     );
 
-    expect(aggResult.rows).toBeDefined();
-    expect(aggResult.rows.length).toBeGreaterThan(0);
-    console.log("Aggregation result:", aggResult.rows[0]);
+    const aggRows = [];
+    for await (const row of aggDataSet) {
+      aggRows.push(row);
+    }
+    await aggDataSet.close();
+    
+    expect(aggRows.length).toBeGreaterThan(0);
+    console.log("Aggregation result:", aggRows[0]);
   }, 60000);
 
   test("Should handle time-based queries in table model", async () => {
@@ -279,12 +304,17 @@ describe("Table Model All Data Types E2E Tests", () => {
     const futureTime = now + 10000;
 
     // Query with time range
-    const result = await pool.executeQueryStatement(
+    const dataSet = await pool.executeQueryStatement(
       `SELECT * FROM all_types_table WHERE time >= ${now} AND time < ${futureTime}`,
     );
 
-    expect(result.rows).toBeDefined();
-    console.log(`Time-based query returned ${result.rows.length} rows`);
+    const rows = [];
+    for await (const row of dataSet) {
+      rows.push(row);
+    }
+    await dataSet.close();
+    
+    console.log(`Time-based query returned ${rows.length} rows`);
   }, 60000);
 
   test("Should demonstrate difference between tree and table models", async () => {
@@ -309,11 +339,17 @@ describe("Table Model All Data Types E2E Tests", () => {
     console.log("- Example: SELECT * FROM table WHERE tag = 'value'");
 
     // Demonstrate table model query with tags
-    const tagResult = await pool.executeQueryStatement(
+    const dataSet = await pool.executeQueryStatement(
       "SELECT device_id, int32_field FROM all_types_table WHERE region = 'region1'",
     );
 
-    console.log(`\nTag-based query returned ${tagResult.rows.length} rows`);
+    const rows = [];
+    for await (const row of dataSet) {
+      rows.push(row);
+    }
+    await dataSet.close();
+
+    console.log(`\nTag-based query returned ${rows.length} rows`);
     console.log("This type of query is specific to table model");
   }, 60000);
 
@@ -387,11 +423,17 @@ describe("Table Model All Data Types E2E Tests", () => {
     console.log(`Inserted ${batchSize} rows in batch with all data types`);
 
     // Verify batch insert
-    const result = await pool.executeQueryStatement(
+    const dataSet = await pool.executeQueryStatement(
       `SELECT COUNT(*) FROM all_types_table WHERE time >= ${baseTime}`,
     );
 
-    expect(result.rows.length).toBeGreaterThan(0);
+    const rows = [];
+    for await (const row of dataSet) {
+      rows.push(row);
+    }
+    await dataSet.close();
+    
+    expect(rows.length).toBeGreaterThan(0);
     console.log("Batch insert verified");
   }, 60000);
 });

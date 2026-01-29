@@ -106,10 +106,18 @@ describe("Session E2E Tests", () => {
     }
 
     // Verify timeseries created
-    const result = await session.executeQueryStatement(
+    const dataSet = await session.executeQueryStatement(
       "SHOW TIMESERIES root.test.**",
     );
-    expect(result.rows.length).toBeGreaterThanOrEqual(2);
+    
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+    
+    expect(rowCount).toBeGreaterThanOrEqual(2);
   }, 60000);
 
   test("Should execute query statement (SHOW DATABASES)", async () => {
@@ -118,13 +126,20 @@ describe("Session E2E Tests", () => {
       return;
     }
 
-    const result = await session.executeQueryStatement("SHOW DATABASES");
+    const dataSet = await session.executeQueryStatement("SHOW DATABASES");
 
-    expect(result).toBeDefined();
-    expect(result.columns).toBeDefined();
-    expect(Array.isArray(result.columns)).toBe(true);
-    expect(result.rows).toBeDefined();
-    expect(Array.isArray(result.rows)).toBe(true);
+    expect(dataSet).toBeDefined();
+    expect(dataSet.getColumnNames()).toBeDefined();
+    expect(Array.isArray(dataSet.getColumnNames())).toBe(true);
+    
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+    
+    expect(rowCount).toBeGreaterThan(0);
   }, 60000);
 
   test("Should insert and query data (tree model)", async () => {
@@ -151,12 +166,20 @@ describe("Session E2E Tests", () => {
     await session.insertTablet(tablet);
 
     // Query the data
-    const result = await session.executeQueryStatement(
+    const dataSet = await session.executeQueryStatement(
       "SELECT status, temperature FROM root.test.device1 LIMIT 5",
     );
 
-    expect(result).toBeDefined();
-    expect(result.columns).toBeDefined();
-    expect(result.rows.length).toBeGreaterThan(0);
+    expect(dataSet).toBeDefined();
+    expect(dataSet.getColumnNames()).toBeDefined();
+    
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+    
+    expect(rowCount).toBeGreaterThan(0);
   }, 60000);
 });

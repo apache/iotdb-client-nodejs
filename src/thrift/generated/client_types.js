@@ -15,14 +15,21 @@ var common_ttypes = require('./common_types');
 
 var ttypes = module.exports = {};
 ttypes.TSProtocolVersion = {
+  '0' : 'IOTDB_SERVICE_PROTOCOL_V1',
   'IOTDB_SERVICE_PROTOCOL_V1' : 0,
+  '1' : 'IOTDB_SERVICE_PROTOCOL_V2',
   'IOTDB_SERVICE_PROTOCOL_V2' : 1,
+  '2' : 'IOTDB_SERVICE_PROTOCOL_V3',
   'IOTDB_SERVICE_PROTOCOL_V3' : 2
 };
 ttypes.TSConnectionType = {
+  '0' : 'THRIFT_BASED',
   'THRIFT_BASED' : 0,
+  '1' : 'MQTT_BASED',
   'MQTT_BASED' : 1,
+  '2' : 'INTERNAL',
   'INTERNAL' : 2,
+  '3' : 'REST_BASED',
   'REST_BASED' : 3
 };
 var TSQueryDataSet = module.exports.TSQueryDataSet = function(args) {

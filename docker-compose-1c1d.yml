@@ -20,7 +20,7 @@ services:
       - dn_rpc_address=iotdb-datanode
       - dn_internal_address=iotdb-datanode
       - dn_seed_config_node=iotdb-confignode:10710
-      - IOTDB_JMX_OPTS=-Xms768M -Xmx768M -XX:MaxDirectMemorySize=384M
+      - IOTDB_JMX_OPTS=-Xms1G -Xmx1G -XX:MaxDirectMemorySize=384M
       - CONFIGNODE_JMX_OPTS=-Xms384M -Xmx384M -XX:MaxDirectMemorySize=192M
 
   iotdb-confignode:

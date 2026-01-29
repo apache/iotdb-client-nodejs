@@ -18,11 +18,11 @@
  */
 
 import { Session } from './Session';
-import { PoolConfig } from '../utils/Config';
+import { PoolConfig, SQL_DIALECT_TREE, InternalConfig } from '../utils/Config';
 import { BaseSessionPool } from './BaseSessionPool';
 
 /**
- * SessionPool provides connection pooling for IoTDB sessions
+ * SessionPool provides connection pooling for IoTDB sessions (tree model)
  * Supports multiple nodes with round-robin load balancing
  */
 export class SessionPool extends BaseSessionPool {
@@ -40,12 +40,16 @@ export class SessionPool extends BaseSessionPool {
 
   protected async createPoolSession(): Promise<Session> {
     const endPoint = this.getNextEndPoint();
-    const session = new Session({
+    
+    // Create internal config with sql_dialect set to 'tree' for tree model
+    const internalConfig: InternalConfig = {
       ...this.config,
       host: endPoint.host,
       port: endPoint.port,
-    });
-
+      sqlDialect: SQL_DIALECT_TREE,
+    };
+    
+    const session = new Session(internalConfig);
     await session.open();
     return session;
   }

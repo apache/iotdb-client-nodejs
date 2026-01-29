@@ -70,19 +70,31 @@ async function main() {
     });
     console.log("Tablet data inserted");
 
-    // Query data
+    // Query data using SessionDataSet iterator pattern
     console.log("\nQuerying data...");
-    const result = await session.executeQueryStatement(
+    const dataSet = await session.executeQueryStatement(
       "SELECT * FROM root.example.device1",
     );
-    console.log("Columns:", result.columns);
-    console.log("Data types:", result.dataTypes);
-    console.log("Number of rows:", result.rows.length);
+    console.log("Columns:", dataSet.getColumnNames());
+    
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      const row = dataSet.next();
+      rowCount++;
+      console.log(`Row ${rowCount}:`, row.getTimestamp(), row.getFields());
+    }
+    await dataSet.close();
+    console.log("Total rows:", rowCount);
 
     // Show databases
     console.log("\nShowing databases...");
-    const dbResult = await session.executeQueryStatement("SHOW DATABASES");
-    console.log("Databases:", dbResult.rows);
+    const dbDataSet = await session.executeQueryStatement("SHOW DATABASES");
+    const databases = [];
+    while (await dbDataSet.hasNext()) {
+      databases.push(dbDataSet.next().getFields());
+    }
+    await dbDataSet.close();
+    console.log("Databases:", databases);
   } catch (error) {
     console.error("Error:", error);
   } finally {

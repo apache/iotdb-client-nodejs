@@ -80,8 +80,14 @@ async function main() {
     // Approach 1: Using pool methods directly (automatic session management)
     console.log("\n--- Approach 1: Automatic session management ---");
     console.log("Executing table queries...");
-    const result = await pool.executeQueryStatement("SHOW DATABASES");
-    console.log("Databases found:", result.rows.length);
+    const dataSet = await pool.executeQueryStatement("SHOW DATABASES");
+    let dbCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      dbCount++;
+    }
+    await dataSet.close();
+    console.log("Databases found:", dbCount);
 
     // Insert data
     console.log("Inserting data...");
@@ -103,8 +109,14 @@ async function main() {
       console.log("Executing operations with explicit session...");
 
       // Query with explicit session
-      const queryResult = await session.executeQueryStatement("SHOW DATABASES");
-      console.log("Query result:", queryResult.rows.length, "rows");
+      const queryDataSet = await session.executeQueryStatement("SHOW DATABASES");
+      let rowCount = 0;
+      while (await queryDataSet.hasNext()) {
+        queryDataSet.next();
+        rowCount++;
+      }
+      await queryDataSet.close();
+      console.log("Query result:", rowCount, "rows");
 
       // Insert with explicit session
       await session.insertTablet({

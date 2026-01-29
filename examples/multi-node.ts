@@ -84,8 +84,14 @@ async function main() {
     console.log('\nExecuting operations across nodes...');
     
     for (let i = 0; i < 10; i++) {
-      const result = await pool.executeQueryStatement('SHOW DATABASES');
-      console.log(`Query ${i + 1} executed (result count: ${result.rows.length})`);
+      const dataSet = await pool.executeQueryStatement('SHOW DATABASES');
+      let count = 0;
+      while (await dataSet.hasNext()) {
+        dataSet.next();
+        count++;
+      }
+      await dataSet.close();
+      console.log(`Query ${i + 1} executed (result count: ${count})`);
     }
 
     console.log('\nAll operations completed');

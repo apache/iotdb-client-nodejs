@@ -103,9 +103,17 @@ describe("TableSessionPool E2E Tests", () => {
     );
 
     // Show tables from current database (test)
-    const result1 = await pool.executeQueryStatement("SHOW TABLES");
-    expect(result1).toBeDefined();
-    expect(result1.rows.length).toBeGreaterThanOrEqual(2);
+    const dataSet = await pool.executeQueryStatement("SHOW TABLES");
+    expect(dataSet).toBeDefined();
+    
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+    
+    expect(rowCount).toBeGreaterThanOrEqual(2);
   });
 
   test("Should insert and query table data (based on C# example)", async () => {
@@ -158,12 +166,20 @@ describe("TableSessionPool E2E Tests", () => {
     await pool.insertTablet(tablet);
 
     // Query the data
-    const result = await pool.executeQueryStatement(
+    const dataSet = await pool.executeQueryStatement(
       `SELECT * FROM ${tableName} WHERE region_id = '1' AND plant_id IN ('3', '5') AND device_id = '3' LIMIT 10`,
     );
 
-    expect(result).toBeDefined();
-    expect(result.rows.length).toBeGreaterThan(0);
+    expect(dataSet).toBeDefined();
+    
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+    
+    expect(rowCount).toBeGreaterThan(0);
   });
 
   test("Should query tables from database context", async () => {
@@ -173,9 +189,17 @@ describe("TableSessionPool E2E Tests", () => {
     }
 
     // Show tables from current database (test)
-    const result = await pool.executeQueryStatement("SHOW TABLES");
-    expect(result).toBeDefined();
-    expect(result.rows.length).toBeGreaterThan(0);
+    const dataSet = await pool.executeQueryStatement("SHOW TABLES");
+    expect(dataSet).toBeDefined();
+    
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+    
+    expect(rowCount).toBeGreaterThan(0);
   });
 
   test("Should handle insert with null values (based on C# example)", async () => {
@@ -214,14 +238,20 @@ describe("TableSessionPool E2E Tests", () => {
     await pool.insertTablet(tablet);
 
     // Query null count
-    const result = await pool.executeQueryStatement(
+    const dataSet = await pool.executeQueryStatement(
       `SELECT COUNT(*) FROM ${tableName} WHERE f1 IS NULL`,
     );
 
-    expect(result).toBeDefined();
-    expect(result.rows.length).toBeGreaterThan(0);
+    expect(dataSet).toBeDefined();
+    
+    let count = 0;
+    if (await dataSet.hasNext()) {
+      const row = dataSet.next();
+      count = row[0];
+    }
+    await dataSet.close();
+    
     // Should have 5 null values
-    const count = result.rows[0][0];
     expect(count).toBe(5);
   });
 
@@ -252,9 +282,15 @@ describe("TableSessionPool E2E Tests", () => {
 
     try {
       // Execute operations with the explicit session
-      const result = await session.executeQueryStatement("SHOW DATABASES");
-      expect(result).toBeDefined();
-      expect(result.columns).toBeDefined();
+      const dataSet = await session.executeQueryStatement("SHOW DATABASES");
+      expect(dataSet).toBeDefined();
+      expect(dataSet.getColumnNames()).toBeDefined();
+      
+      // Iterate through results
+      while (await dataSet.hasNext()) {
+        dataSet.next();
+      }
+      await dataSet.close();
 
       // Session should still be open
       expect(session.isOpen()).toBe(true);
@@ -287,9 +323,15 @@ describe("TableSessionPool E2E Tests", () => {
       await stringNodeUrlsPool.init();
       expect(stringNodeUrlsPool.getPoolSize()).toBeGreaterThanOrEqual(1);
 
-      const result =
+      const dataSet =
         await stringNodeUrlsPool.executeQueryStatement("SHOW DATABASES");
-      expect(result).toBeDefined();
+      expect(dataSet).toBeDefined();
+      
+      // Iterate through results
+      while (await dataSet.hasNext()) {
+        dataSet.next();
+      }
+      await dataSet.close();
 
       console.log(
         "TableSessionPool with string format nodeUrls working correctly",

@@ -18,12 +18,12 @@
  */
 
 import { Session } from './Session';
-import { PoolConfig } from '../utils/Config';
+import { PoolConfig, SQL_DIALECT_TABLE, InternalConfig } from '../utils/Config';
 import { BaseSessionPool } from './BaseSessionPool';
 
 /**
  * TableSessionPool provides connection pooling optimized for table model operations
- * Automatically configures sessions for table mode by executing USE DATABASE
+ * Automatically configures sessions for table mode by setting sql_dialect to 'table'
  */
 export class TableSessionPool extends BaseSessionPool {
   constructor(
@@ -40,16 +40,26 @@ export class TableSessionPool extends BaseSessionPool {
 
   protected async createPoolSession(): Promise<Session> {
     const endPoint = this.getNextEndPoint();
-    const session = new Session({
+    
+    // Create internal config with sql_dialect set to 'table'
+    const internalConfig: InternalConfig = {
       ...this.config,
       host: endPoint.host,
       port: endPoint.port,
-    });
-
+      sqlDialect: SQL_DIALECT_TABLE,
+    };
+    
+    const session = new Session(internalConfig);
     await session.open();
 
-    // Set session to table model by executing a USE DATABASE command
+    // Set session to table model by executing a USE DATABASE command if database is specified
     if (this.config.database) {
+      // Validate database name to prevent SQL injection
+      // IoTDB database names should only contain alphanumeric characters, underscores, hyphens, and dots
+      const databaseNameRegex = /^[a-zA-Z0-9_.-]+$/;
+      if (!databaseNameRegex.test(this.config.database)) {
+        throw new Error(`Invalid database name: ${this.config.database}. Database names must only contain alphanumeric characters, underscores, hyphens, and dots.`);
+      }
       await session.executeNonQueryStatement(`USE ${this.config.database}`);
     }
 

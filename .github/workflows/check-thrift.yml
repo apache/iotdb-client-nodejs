@@ -58,8 +58,8 @@ jobs:
       - name: Regenerate Thrift client
         if: steps.check_changes.outputs.changes_detected == 'true'
         run: |
-          rm -rf src/thrift/generated/*
-          thrift --gen js:node -out src/thrift/generated thrift/client.thrift
+          rm -rf src/thrift/generated/*.js src/thrift/generated/*.d.ts
+          thrift --gen js:node,ts -out src/thrift/generated thrift/client.thrift
 
       - name: Install dependencies and build
         if: steps.check_changes.outputs.changes_detected == 'true'
@@ -87,7 +87,9 @@ jobs:
             ### Changes
             - Updated `thrift/client.thrift`
             - Updated `thrift/common.thrift`
-            - Regenerated Node.js client code in `src/thrift/generated/`
+            - Regenerated Node.js client code with TypeScript definitions in `src/thrift/generated/`
+              - Generated `.js` files for runtime
+              - Generated `.d.ts` files for TypeScript type checking
             
             ### Verification
             - ✅ Code builds successfully

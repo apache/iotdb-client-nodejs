@@ -75,11 +75,19 @@ describe("SessionPool E2E Tests", () => {
       return;
     }
 
-    const result = await pool.executeQueryStatement("SHOW DATABASES");
+    const dataSet = await pool.executeQueryStatement("SHOW DATABASES");
 
-    expect(result).toBeDefined();
-    expect(result.columns).toBeDefined();
-    expect(Array.isArray(result.rows)).toBe(true);
+    expect(dataSet).toBeDefined();
+    expect(dataSet.getColumnNames()).toBeDefined();
+    
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+    
+    expect(rowCount).toBeGreaterThan(0);
   });
 
   test("Should execute non-query using pool", async () => {
@@ -113,13 +121,16 @@ describe("SessionPool E2E Tests", () => {
       promises.push(pool.executeQueryStatement("SHOW DATABASES"));
     }
 
-    const results = await Promise.all(promises);
+    const dataSets = await Promise.all(promises);
 
-    expect(results).toHaveLength(10);
-    results.forEach((result) => {
-      expect(result).toBeDefined();
-      expect(result.columns).toBeDefined();
-    });
+    expect(dataSets).toHaveLength(10);
+    
+    // Close all datasets
+    for (const dataSet of dataSets) {
+      expect(dataSet).toBeDefined();
+      expect(dataSet.getColumnNames()).toBeDefined();
+      await dataSet.close();
+    }
   });
 
   test("Should insert tablet using pool", async () => {
@@ -204,9 +215,10 @@ describe("SessionPool E2E Tests", () => {
 
     try {
       // Execute operations with the explicit session
-      const result = await session.executeQueryStatement("SHOW DATABASES");
-      expect(result).toBeDefined();
-      expect(result.columns).toBeDefined();
+      const dataSet = await session.executeQueryStatement("SHOW DATABASES");
+      expect(dataSet).toBeDefined();
+      expect(dataSet.getColumnNames()).toBeDefined();
+      await dataSet.close();
 
       // Session should still be open
       expect(session.isOpen()).toBe(true);
@@ -237,9 +249,10 @@ describe("SessionPool E2E Tests", () => {
         pool.getSession().then(async (session) => {
           try {
             // Execute a query with this session
-            const result =
+            const dataSet =
               await session.executeQueryStatement("SHOW DATABASES");
-            expect(result).toBeDefined();
+            expect(dataSet).toBeDefined();
+            await dataSet.close();
             return session;
           } catch (error) {
             pool.releaseSession(session);

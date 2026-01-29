@@ -62,8 +62,14 @@ async function main() {
 
     for (let i = 0; i < 20; i++) {
       promises.push(
-        pool.executeQueryStatement("SHOW DATABASES").then(() => {
-          console.log(`Query ${i + 1} completed`);
+        pool.executeQueryStatement("SHOW DATABASES").then(async (dataSet) => {
+          let count = 0;
+          while (await dataSet.hasNext()) {
+            dataSet.next();
+            count++;
+          }
+          await dataSet.close();
+          console.log(`Query ${i + 1} completed with ${count} rows`);
         }),
       );
     }
@@ -90,10 +96,16 @@ async function main() {
       console.log("Data inserted via explicit session");
 
       // Query data
-      const result = await session.executeQueryStatement(
+      const dataSet = await session.executeQueryStatement(
         "SELECT * FROM root.pool_example.sensor1",
       );
-      console.log("Query result:", result.rows.length, "rows");
+      let rowCount = 0;
+      while (await dataSet.hasNext()) {
+        dataSet.next();
+        rowCount++;
+      }
+      await dataSet.close();
+      console.log("Query result:", rowCount, "rows");
     } finally {
       // Always release the session back to the pool
       pool.releaseSession(session);

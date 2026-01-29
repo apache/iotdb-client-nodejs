@@ -1,4 +1,4 @@
-name: E2E Tests (3C3D)
+name: E2E Tests (1C3D)
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  e2e-3c3d:
-    name: E2E Test with 3 ConfigNodes and 3 DataNodes
+  e2e-1c3d:
+    name: E2E Test with 1 ConfigNode and 3 DataNodes
     runs-on: ubuntu-latest
     
     steps:
@@ -32,9 +32,9 @@ jobs:
 
       - name: Start IoTDB Cluster with Docker Compose
         run: |
-          docker compose -f docker-compose-3c3d.yml up -d
+          docker compose -f docker-compose-1c3d.yml up -d
           echo "Waiting for IoTDB cluster to be ready..."
-          sleep 75
+          sleep 5
       
       - name: Verify IoTDB ports are listening
         run: |
@@ -48,16 +48,16 @@ jobs:
         continue-on-error: true
         run: |
           echo "=== Docker containers status ==="
-          docker compose -f docker-compose-3c3d.yml ps
+          docker compose -f docker-compose-1c3d.yml ps
           echo ""
-          echo "=== Recent logs from iotdb-datanode1 ==="
-          docker compose -f docker-compose-3c3d.yml logs --tail=30 iotdb-datanode1
+          echo "=== Recent logs from iotdb-datanode-1 ==="
+          docker compose -f docker-compose-1c3d.yml logs --tail=30 iotdb-datanode-1
           echo ""
-          echo "=== Recent logs from iotdb-datanode2 ==="
-          docker compose -f docker-compose-3c3d.yml logs --tail=30 iotdb-datanode2
+          echo "=== Recent logs from iotdb-datanode-2 ==="
+          docker compose -f docker-compose-1c3d.yml logs --tail=30 iotdb-datanode-2
           echo ""
-          echo "=== Recent logs from iotdb-datanode3 ==="
-          docker compose -f docker-compose-3c3d.yml logs --tail=30 iotdb-datanode3
+          echo "=== Recent logs from iotdb-datanode-3 ==="
+          docker compose -f docker-compose-1c3d.yml logs --tail=30 iotdb-datanode-3
           
       - name: Run E2E Tests
         env:
@@ -71,15 +71,27 @@ jobs:
         run: |
           set -o pipefail
           npm run test:e2e 2>&1 | tee test-results/test-output.log
+      
+      - name: Collect Docker logs on failure
+        if: failure()
+        run: |
+          echo "=== Collecting Docker logs ==="
+          mkdir -p test-results/docker-logs
+          docker compose -f docker-compose-1c3d.yml logs > test-results/docker-logs/all-containers.log
+          docker compose -f docker-compose-1c3d.yml logs iotdb-confignode > test-results/docker-logs/confignode.log
+          docker compose -f docker-compose-1c3d.yml logs iotdb-datanode-1 > test-results/docker-logs/datanode-1.log
+          docker compose -f docker-compose-1c3d.yml logs iotdb-datanode-2 > test-results/docker-logs/datanode-2.log
+          docker compose -f docker-compose-1c3d.yml logs iotdb-datanode-3 > test-results/docker-logs/datanode-3.log
+          echo "Docker logs saved to test-results/docker-logs/"
           
       - name: Stop and clean up Docker Compose
         if: always()
         run: |
-          docker compose -f docker-compose-3c3d.yml down -v
+          docker compose -f docker-compose-1c3d.yml down -v
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-test-results-3c3d
+          name: e2e-test-results-1c3d
           path: test-results/

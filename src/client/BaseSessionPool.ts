@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { Session, QueryResult, Tablet } from "./Session";
+import { Session, QueryResult, Tablet, SessionDataSet } from "./Session";
 import {
   PoolConfig,
   DEFAULT_POOL_CONFIG,
@@ -236,15 +236,29 @@ export abstract class BaseSessionPool {
     );
   }
 
+  /**
+   * Execute a query statement and return SessionDataSet
+   * Session is held until dataset.close() is called
+   */
   async executeQueryStatement(
     sql: string,
     timeoutMs: number = 60000,
-  ): Promise<QueryResult> {
+  ): Promise<SessionDataSet> {
     const session = await this.getSession();
+    
     try {
-      return await session.executeQueryStatement(sql, timeoutMs);
-    } finally {
+      const dataSet = await session.executeQueryStatement(sql, timeoutMs);
+      
+      // Set cleanup callback to release session when dataset is closed
+      dataSet.setCleanupCallback(() => {
+        this.releaseSession(session);
+      });
+      
+      return dataSet;
+    } catch (error) {
+      // If query fails, release session immediately
       this.releaseSession(session);
+      throw error;
     }
   }
 

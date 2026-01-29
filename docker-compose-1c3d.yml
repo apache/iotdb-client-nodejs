@@ -1,0 +1,110 @@
+services:
+  # ConfigNode (single instance for metadata management)
+  iotdb-confignode:
+    image: apache/iotdb:2.0.6-confignode
+    container_name: iotdb-confignode
+    restart: always
+    healthcheck:
+      test: ["CMD", "ls", "/iotdb/data"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - iotdb-network
+    environment:
+      - cn_internal_address=iotdb-confignode
+      - cn_internal_port=10710
+      - cn_seed_config_node=iotdb-confignode:10710
+      - schema_replication_factor=3
+      - data_replication_factor=2
+      - IOTDB_JMX_OPTS=-Xms256M -Xmx256M -XX:MaxDirectMemorySize=128M
+      - CONFIGNODE_JMX_OPTS=-Xms256M -Xmx256M -XX:MaxDirectMemorySize=128M
+
+  # DataNode 1
+  iotdb-datanode-1:
+    image: apache/iotdb:2.0.6-datanode
+    container_name: iotdb-datanode-1
+    restart: always
+    healthcheck:
+      test: ["CMD", "ls", "/iotdb/data/datanode/system"]
+      interval: 10s
+      timeout: 60s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      iotdb-confignode:
+        condition: service_healthy
+    ports:
+      - "6667:6667"
+    networks:
+      - iotdb-network
+    environment:
+      - dn_rpc_address=iotdb-datanode-1
+      - dn_internal_address=iotdb-datanode-1
+      - dn_seed_config_node=iotdb-confignode:10710
+      - dn_rpc_port=6667
+      - schema_replication_factor=3
+      - data_replication_factor=2
+      - IOTDB_JMX_OPTS=-Xms512M -Xmx512M -XX:MaxDirectMemorySize=256M
+      - DATANODE_JMX_OPTS=-Xms512M -Xmx512M -XX:MaxDirectMemorySize=256M
+
+  # DataNode 2
+  iotdb-datanode-2:
+    image: apache/iotdb:2.0.6-datanode
+    container_name: iotdb-datanode-2
+    restart: always
+    healthcheck:
+      test: ["CMD", "ls", "/iotdb/data/datanode/system"]
+      interval: 10s
+      timeout: 60s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      iotdb-confignode:
+        condition: service_healthy
+    ports:
+      - "6668:6667"
+    networks:
+      - iotdb-network
+    environment:
+      - dn_rpc_address=iotdb-datanode-2
+      - dn_internal_address=iotdb-datanode-2
+      - dn_seed_config_node=iotdb-confignode:10710
+      - dn_rpc_port=6667
+      - schema_replication_factor=3
+      - data_replication_factor=2
+      - IOTDB_JMX_OPTS=-Xms512M -Xmx512M -XX:MaxDirectMemorySize=256M
+      - DATANODE_JMX_OPTS=-Xms512M -Xmx512M -XX:MaxDirectMemorySize=256M
+
+  # DataNode 3
+  iotdb-datanode-3:
+    image: apache/iotdb:2.0.6-datanode
+    container_name: iotdb-datanode-3
+    restart: always
+    healthcheck:
+      test: ["CMD", "ls", "/iotdb/data/datanode/system"]
+      interval: 10s
+      timeout: 60s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      iotdb-confignode:
+        condition: service_healthy
+    ports:
+      - "6669:6667"
+    networks:
+      - iotdb-network
+    environment:
+      - dn_rpc_address=iotdb-datanode-3
+      - dn_internal_address=iotdb-datanode-3
+      - dn_seed_config_node=iotdb-confignode:10710
+      - dn_rpc_port=6667
+      - schema_replication_factor=3
+      - data_replication_factor=2
+      - IOTDB_JMX_OPTS=-Xms512M -Xmx512M -XX:MaxDirectMemorySize=256M
+      - DATANODE_JMX_OPTS=-Xms512M -Xmx512M -XX:MaxDirectMemorySize=256M
+
+networks:
+  iotdb-network:
+    driver: bridge

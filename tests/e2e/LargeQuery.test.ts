@@ -69,7 +69,7 @@ describe("Large Query E2E Tests", () => {
     try {
       await session.executeNonQueryStatement("CREATE DATABASE root.test");
     } catch (error: any) {
-      if (!error.message?.includes("already exists")) {
+      if (!error.message?.includes("already")) {
         throw error;
       }
     }
@@ -149,18 +149,26 @@ describe("Large Query E2E Tests", () => {
     }
 
     // Query all data - with fetchSize=100, this should require multiple fetchResult calls
-    const result = await session.executeQueryStatement(
+    const dataSet = await session.executeQueryStatement(
       "SELECT * FROM root.test.device1",
     );
 
-    expect(result).toBeDefined();
-    expect(result.columns).toBeDefined();
-    expect(result.columns.length).toBeGreaterThan(0);
-    expect(result.rows).toBeDefined();
-    expect(result.rows.length).toBeGreaterThanOrEqual(5000);
+    expect(dataSet).toBeDefined();
+    const columnNames = dataSet.getColumnNames();
+    expect(columnNames).toBeDefined();
+    expect(columnNames.length).toBeGreaterThan(0);
 
-    console.log(`Retrieved ${result.rows.length} rows with fetchSize=100`);
-    console.log(`Columns: ${result.columns.join(", ")}`);
+    const rows = [];
+    while (await dataSet.hasNext()) {
+      const row = await dataSet.next();
+      rows.push(row);
+    }
+    await dataSet.close();
+
+    expect(rows.length).toBeGreaterThanOrEqual(5000);
+
+    console.log(`Retrieved ${rows.length} rows with fetchSize=100`);
+    console.log(`Columns: ${columnNames.join(", ")}`);
   }, 30000);
 
   test("Should query with filters on large dataset", async () => {
@@ -169,16 +177,24 @@ describe("Large Query E2E Tests", () => {
       return;
     }
 
-    const result = await session.executeQueryStatement(
+    const dataSet = await session.executeQueryStatement(
       "SELECT sensor1, sensor2 FROM root.test.device1 WHERE sensor1 > 25",
     );
 
-    expect(result).toBeDefined();
-    expect(result.columns).toBeDefined();
-    expect(result.rows).toBeDefined();
-    expect(result.rows.length).toBeGreaterThan(0);
+    expect(dataSet).toBeDefined();
+    const columnNames = dataSet.getColumnNames();
+    expect(columnNames).toBeDefined();
 
-    console.log(`Filtered query returned ${result.rows.length} rows`);
+    const rows = [];
+    while (await dataSet.hasNext()) {
+      const row = await dataSet.next();
+      rows.push(row);
+    }
+    await dataSet.close();
+
+    expect(rows.length).toBeGreaterThan(0);
+
+    console.log(`Filtered query returned ${rows.length} rows`);
   }, 30000);
 
   test("Should query with aggregation on large dataset", async () => {
@@ -188,25 +204,41 @@ describe("Large Query E2E Tests", () => {
     }
 
     // IoTDB 2.x requires separate aggregation queries
-    const countResult = await session.executeQueryStatement(
+    const countDataSet = await session.executeQueryStatement(
       "SELECT COUNT(sensor1) FROM root.test.device1",
     );
 
-    expect(countResult).toBeDefined();
-    expect(countResult.columns).toBeDefined();
-    expect(countResult.rows).toBeDefined();
-    expect(countResult.rows.length).toBeGreaterThan(0);
+    expect(countDataSet).toBeDefined();
+    const countColumns = countDataSet.getColumnNames();
+    expect(countColumns).toBeDefined();
 
-    console.log("COUNT result:", countResult.rows[0]);
+    const countRows = [];
+    while (await countDataSet.hasNext()) {
+      const row = await countDataSet.next();
+      countRows.push(row);
+    }
+    await countDataSet.close();
 
-    const avgResult = await session.executeQueryStatement(
+    expect(countRows.length).toBeGreaterThan(0);
+
+    console.log("COUNT result:", countRows[0]);
+
+    const avgDataSet = await session.executeQueryStatement(
       "SELECT AVG(sensor1) FROM root.test.device1",
     );
 
-    expect(avgResult).toBeDefined();
-    expect(avgResult.rows.length).toBeGreaterThan(0);
+    expect(avgDataSet).toBeDefined();
 
-    console.log("AVG result:", avgResult.rows[0]);
+    const avgRows = [];
+    while (await avgDataSet.hasNext()) {
+      const row = await avgDataSet.next();
+      avgRows.push(row);
+    }
+    await avgDataSet.close();
+
+    expect(avgRows.length).toBeGreaterThan(0);
+
+    console.log("AVG result:", avgRows[0]);
   }, 30000);
 
   test("Should query with LIMIT on large dataset", async () => {
@@ -216,15 +248,22 @@ describe("Large Query E2E Tests", () => {
     }
 
     // Query the first 100 records using LIMIT
-    const result = await session.executeQueryStatement(
+    const dataSet = await session.executeQueryStatement(
       `SELECT * FROM root.test.device1 LIMIT 100`,
     );
 
-    expect(result).toBeDefined();
-    expect(result.rows).toBeDefined();
-    expect(result.rows.length).toBeGreaterThan(0);
+    expect(dataSet).toBeDefined();
 
-    console.log(`LIMIT query returned ${result.rows.length} rows`);
+    const rows = [];
+    while (await dataSet.hasNext()) {
+      const row = await dataSet.next();
+      rows.push(row);
+    }
+    await dataSet.close();
+
+    expect(rows.length).toBeGreaterThan(0);
+
+    console.log(`LIMIT query returned ${rows.length} rows`);
   }, 30000);
 
   test("Should handle multiple concurrent large queries", async () => {
@@ -240,15 +279,24 @@ describe("Large Query E2E Tests", () => {
       "SELECT COUNT(*) FROM root.test.device1",
     ];
 
-    const results = await Promise.all(
+    const dataSets = await Promise.all(
       queries.map((query) => session.executeQueryStatement(query)),
     );
 
-    expect(results).toHaveLength(4);
-    results.forEach((result, index) => {
-      expect(result).toBeDefined();
-      expect(result.rows).toBeDefined();
-      console.log(`Query ${index + 1} returned ${result.rows.length} rows`);
-    });
+    expect(dataSets).toHaveLength(4);
+
+    for (let index = 0; index < dataSets.length; index++) {
+      const dataSet = dataSets[index];
+      expect(dataSet).toBeDefined();
+
+      const rows = [];
+      while (await dataSet.hasNext()) {
+        const row = await dataSet.next();
+        rows.push(row);
+      }
+      await dataSet.close();
+
+      console.log(`Query ${index + 1} returned ${rows.length} rows`);
+    }
   }, 60000); // Increased timeout for concurrent queries
 });

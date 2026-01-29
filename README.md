@@ -44,13 +44,22 @@ await session.open();
 // Execute non-query statement
 await session.executeNonQueryStatement('CREATE DATABASE root.test');
 
-// Execute query statement with default timeout (60 seconds)
-const result = await session.executeQueryStatement('SHOW DATABASES');
-console.log('Columns:', result.columns);
-console.log('Rows:', result.rows);
+// Execute query with SessionDataSet (iterator pattern - memory efficient)
+const dataSet = await session.executeQueryStatement('SELECT * FROM root.test.**');
+while (await dataSet.hasNext()) {
+  const row = dataSet.next();
+  console.log(row.getTimestamp(), row.getFields());
+}
+await dataSet.close();
+
+// Or use toArray() helper for small result sets (loads all into memory)
+const dataSet2 = await session.executeQueryStatement('SHOW DATABASES');
+const allRows = await dataSet2.toArray(); // Returns [[timestamp, ...fields], ...]
+console.log('All rows:', allRows);
 
 // Execute query with custom timeout (30 seconds)
-const customResult = await session.executeQueryStatement('SELECT * FROM root.test.**', 30000);
+const customDataSet = await session.executeQueryStatement('SELECT * FROM root.test.**', 30000);
+// ... iterate and close
 
 // Insert tablet data
 await session.insertTablet({
@@ -90,6 +99,56 @@ await session.open();
 // ... use session
 await session.close();
 ```
+
+### Query Results with SessionDataSet
+
+The `executeQueryStatement()` method returns a SessionDataSet for efficient iteration through query results:
+
+```typescript
+import { Session, SessionDataSet, RowRecord } from 'iotdb-client-nodejs';
+
+const session = new Session({
+  host: 'localhost',
+  port: 6667,
+  username: 'root',
+  password: 'root',
+  fetchSize: 1024, // Rows per fetch
+});
+
+await session.open();
+
+// Execute query and get SessionDataSet
+const dataSet: SessionDataSet = await session.executeQueryStatement(
+  'SELECT temperature, humidity FROM root.test.device1'
+);
+
+// Iterate through results efficiently
+while (await dataSet.hasNext()) {
+  const row: RowRecord = dataSet.next();
+  
+  // Access by column name
+  const temp = row.getFloat('temperature');
+  const humidity = row.getFloat('humidity');
+  
+  // Access by index
+  const timestamp = row.getTimestamp();
+  
+  console.log(`${timestamp}: temp=${temp}, humidity=${humidity}`);
+}
+
+// Always close the dataset
+await dataSet.close();
+await session.close();
+```
+
+**Benefits of SessionDataSet:**
+- ✅ **Memory Efficient**: Only keeps current batch in memory
+- ✅ **Lazy Loading**: Fetches data on-demand
+- ✅ **Large Datasets**: Can handle results larger than available RAM
+- ✅ **Type Safety**: Typed getters prevent errors
+- ✅ **Resource Management**: Proper cleanup with `close()`
+
+See [SessionDataSet Guide](docs/sessiondataset-guide.md) for complete documentation.
 
 ### SessionPool Usage
 
@@ -638,9 +697,32 @@ See the `examples/` directory for more usage examples:
 - `examples/multi-node.ts` - Multi-node configuration
 - `examples/ssl-connection.ts` - SSL/TLS connection
 
+## Documentation
+
+Comprehensive documentation is available in the [docs/](docs/) directory:
+
+### For Users
+- **[Implementation Guide](docs/implementation.md)** - Architecture and core components
+- **[Data Types Reference](docs/data-types.md)** - Complete data type documentation
+- **[TypeScript Examples](docs/typescript-examples.md)** - TypeScript usage guide
+- **[Thrift Documentation](docs/thrift.md)** - Thrift code generation
+
+### For Contributors
+- **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute
+- **[Build Infrastructure](docs/development/build-infrastructure.md)** - Build system details
+- **[Debugging E2E Tests](docs/development/debugging-e2e.md)** - Testing guide
+- **[Test Database Reference](docs/development/test-database.md)** - Test setup
+
+### Additional Resources
+- **[Project Status](docs/project-status.md)** - Implementation status and roadmap
+- **[Changelog](CHANGELOG.md)** - Version history
+- **[GitHub Workflows](.github/workflows/README.md)** - CI/CD documentation
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## License
 

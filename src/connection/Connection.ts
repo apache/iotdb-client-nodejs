@@ -18,21 +18,21 @@
  */
 
 import * as thrift from "thrift";
-import { Config } from "../utils/Config";
+import { InternalConfig } from "../utils/Config";
 import { logger } from "../utils/Logger";
 
 const IClientRPCService = require("../thrift/generated/IClientRPCService");
 const ttypes = require("../thrift/generated/client_types");
 
 export class Connection {
-  private config: Config;
+  private config: InternalConfig;
   private connection: thrift.Connection | null = null;
   private client: any = null;
   private sessionId: number | null = null;
   private statementId: number | null = null;
   private isConnected: boolean = false;
 
-  constructor(config: Config) {
+  constructor(config: InternalConfig) {
     this.config = config;
   }
 
@@ -108,12 +108,19 @@ export class Connection {
   }
 
   private async openSession(): Promise<void> {
+    const configuration: Record<string, string> = {};
+    
+    // Add sql_dialect to configuration if specified
+    if (this.config.sqlDialect) {
+      configuration['sql_dialect'] = this.config.sqlDialect;
+    }
+    
     const openReq = new ttypes.TSOpenSessionReq({
       client_protocol: ttypes.TSProtocolVersion.IOTDB_SERVICE_PROTOCOL_V3,
       username: this.config.username || "root",
       password: this.config.password || "root",
       zoneId: this.config.timezone || "UTC+8",
-      configuration: {},
+      configuration: configuration,
     });
 
     return new Promise((resolve, reject) => {

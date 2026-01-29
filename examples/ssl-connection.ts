@@ -38,8 +38,13 @@ async function main() {
     console.log('Secure connection established');
 
     // Execute operations over SSL
-    const result = await session.executeQueryStatement('SHOW DATABASES');
-    console.log('Databases:', result.rows);
+    const dataSet = await session.executeQueryStatement('SHOW DATABASES');
+    const databases = [];
+    while (await dataSet.hasNext()) {
+      databases.push(dataSet.next().getFields());
+    }
+    await dataSet.close();
+    console.log('Databases:', databases);
 
   } catch (error) {
     console.error('Error:', error);

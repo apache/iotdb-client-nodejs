@@ -17,18 +17,31 @@
  * under the License.
  */
 
-import { Connection } from '../connection/Connection';
-import { Config, DEFAULT_CONFIG, parseNodeUrls, EndPoint } from '../utils/Config';
-import { logger } from '../utils/Logger';
+import { Connection } from "../connection/Connection";
+import {
+  Config,
+  DEFAULT_CONFIG,
+  parseNodeUrls,
+  EndPoint,
+} from "../utils/Config";
+import { logger } from "../utils/Logger";
+import { SessionDataSet } from "./SessionDataSet";
+import { RowRecord } from "./RowRecord";
+import { BaseColumnDecoder, ColumnEncoding, Column } from "./ColumnDecoder";
 
-const ttypes = require('../thrift/generated/client_types');
+const ttypes = require("../thrift/generated/client_types");
 
+/**
+ * @deprecated QueryResult is deprecated. Use SessionDataSet instead.
+ */
 export interface QueryResult {
   columns: string[];
   dataTypes: string[];
   rows: any[][];
   queryId?: number;
 }
+
+export { SessionDataSet, RowRecord };
 
 export interface Tablet {
   deviceId: string;
@@ -45,30 +58,36 @@ export class Session {
   constructor(config: Config) {
     // Validate config - either host/port or nodeUrls must be provided
     if (!config.host && !config.nodeUrls) {
-      throw new Error('Either host/port or nodeUrls must be provided');
+      throw new Error("Either host/port or nodeUrls must be provided");
     }
-    
+
     if (config.host && !config.port) {
-      throw new Error('Port is required when host is provided');
+      throw new Error("Port is required when host is provided");
     }
 
     if (config.nodeUrls && config.nodeUrls.length === 0) {
-      throw new Error('nodeUrls array cannot be empty');
+      throw new Error("nodeUrls array cannot be empty");
     }
 
     // If nodeUrls is provided, parse and use the first node for single session
     if (config.nodeUrls && config.nodeUrls.length > 0) {
       // Parse nodeUrls if in string format
-      const endpoints: EndPoint[] = typeof config.nodeUrls[0] === 'string'
-        ? parseNodeUrls(config.nodeUrls as string[])
-        : config.nodeUrls as EndPoint[];
-      
+      const endpoints: EndPoint[] =
+        typeof config.nodeUrls[0] === "string"
+          ? parseNodeUrls(config.nodeUrls as string[])
+          : (config.nodeUrls as EndPoint[]);
+
       const firstNode = endpoints[0];
-      this.config = { ...DEFAULT_CONFIG, ...config, host: firstNode.host, port: firstNode.port } as Config;
+      this.config = {
+        ...DEFAULT_CONFIG,
+        ...config,
+        host: firstNode.host,
+        port: firstNode.port,
+      } as Config;
     } else {
       this.config = { ...DEFAULT_CONFIG, ...config } as Config;
     }
-    
+
     this.connection = new Connection(this.config);
   }
 
@@ -80,7 +99,28 @@ export class Session {
     await this.connection.close();
   }
 
-  async executeQueryStatement(sql: string, timeoutMs: number = 60000): Promise<QueryResult> {
+  /**
+   * Execute a query and return a SessionDataSet for iterating through results.
+   * This method supports lazy loading and proper resource management.
+   *
+   * @param sql SQL query statement
+   * @param timeoutMs Query timeout in milliseconds (default: 60000)
+   * @returns SessionDataSet for iterating through query results
+   *
+   * @example
+   * ```typescript
+   * const dataSet = await session.executeQueryStatement('SELECT * FROM root.test');
+   * while (await dataSet.hasNext()) {
+   *   const row = dataSet.next();
+   *   console.log(row.getTimestamp(), row.getFields());
+   * }
+   * await dataSet.close();
+   * ```
+   */
+  async executeQueryStatement(
+    sql: string,
+    timeoutMs: number = 60000,
+  ): Promise<SessionDataSet> {
     logger.debug(`Executing query: ${sql}`);
 
     const client = this.connection.getClient();
@@ -91,10 +131,10 @@ export class Session {
       sessionId: sessionId,
       statement: sql,
       statementId: statementId,
-      fetchSize: this.config.fetchSize,
+      fetchSize: this.config.fetchSize || 1024,
       timeout: timeoutMs,
       enableRedirectQuery: true,
-      jdbcQuery: true,
+      jdbcQuery: false, // Changed to false to use queryDataSet format
     });
 
     return new Promise((resolve, reject) => {
@@ -105,13 +145,62 @@ export class Session {
         }
 
         if (response.status.code !== 200) {
-          reject(new Error(response.status.message || 'Query failed'));
+          reject(new Error(response.status.message || "Query failed"));
           return;
         }
 
         try {
-          const result = await this.parseQueryResult(response);
-          resolve(result);
+          let initialRows: any[][];
+          const ignoreTimeStamp = response.ignoreTimeStamp || false;
+
+          logger.debug(
+            `executeQueryStatement response: ignoreTimeStamp=${ignoreTimeStamp}`,
+          );
+          logger.debug(
+            `executeQueryStatement response: queryResult exists=${!!response.queryResult}, length=${response.queryResult?.length || 0}`,
+          );
+          logger.debug(
+            `executeQueryStatement response: queryDataSet exists=${!!response.queryDataSet}`,
+          );
+
+          // Handle both queryDataSet and queryResult formats
+          if (response.queryResult && response.queryResult.length > 0) {
+            // New TsBlock format (queryResult is Buffer[])
+            initialRows = await this.parseQueryResult(
+              response.queryResult,
+              response.columns?.length || 0,
+              response.dataTypeList || [],
+              ignoreTimeStamp,
+            );
+          } else if (response.queryDataSet) {
+            // Old columnar format (TSQueryDataSet)
+            initialRows = await this.parseDataSet(
+              response.queryDataSet,
+              response.columns?.length || 0,
+              response.dataTypeList || [],
+            );
+          } else {
+            // No data in response
+            initialRows = [];
+          }
+
+          // Create SessionDataSet
+          const dataSet = new SessionDataSet(
+            this,
+            response.queryId,
+            statementId,
+            sql,
+            response.columns || [],
+            response.dataTypeList || [],
+            initialRows,
+            response.moreData || false,
+            this.config.fetchSize || 1024,
+            sessionId,
+            ignoreTimeStamp,
+            response.columnIndex2TsBlockColumnIndexList,
+          );
+
+          resolve(dataSet);
         } catch (parseError) {
           reject(parseError);
         }
@@ -140,7 +229,9 @@ export class Session {
         }
 
         if (response.status.code !== 200) {
-          reject(new Error(response.status.message || 'Statement execution failed'));
+          reject(
+            new Error(response.status.message || "Statement execution failed"),
+          );
           return;
         }
 
@@ -156,11 +247,18 @@ export class Session {
     const sessionId = this.connection.getSessionId();
 
     // Validate timestamps and convert to BigInt
-    const bigIntTimestamps = tablet.timestamps.map(t => {
-      if (typeof t !== 'number' || !Number.isFinite(t)) {
+    const bigIntTimestamps = tablet.timestamps.map((t) => {
+      if (typeof t !== "number" || !Number.isFinite(t)) {
         throw new Error(`Invalid timestamp: ${t}`);
       }
       return BigInt(Math.floor(t));
+    });
+
+    // Serialize timestamps in big-endian format (Java/network standard)
+    // IoTDB expects big-endian byte order for insertTablet operation
+    const timestampBuffer = Buffer.alloc(bigIntTimestamps.length * 8);
+    bigIntTimestamps.forEach((ts, i) => {
+      timestampBuffer.writeBigInt64BE(ts, i * 8);
     });
 
     const req = new ttypes.TSInsertTabletReq({
@@ -168,7 +266,7 @@ export class Session {
       prefixPath: tablet.deviceId,
       measurements: tablet.measurements,
       values: this.serializeTabletValues(tablet),
-      timestamps: Buffer.from(new BigInt64Array(bigIntTimestamps).buffer),
+      timestamps: timestampBuffer,
       types: tablet.dataTypes,
       size: tablet.timestamps.length,
       isAligned: false,
@@ -182,7 +280,7 @@ export class Session {
         }
 
         if (response.code !== 200) {
-          reject(new Error(response.message || 'Insert tablet failed'));
+          reject(new Error(response.message || "Insert tablet failed"));
           return;
         }
 
@@ -193,15 +291,40 @@ export class Session {
 
   private serializeTabletValues(tablet: Tablet): Buffer {
     // Serialize tablet values based on data types
+    // Format: all columns data, then bitmap for null values
     const buffers: Buffer[] = [];
+    const bitMaps: (boolean[] | null)[] = [];
 
+    // Serialize each column
     for (let colIndex = 0; colIndex < tablet.measurements.length; colIndex++) {
       const dataType = tablet.dataTypes[colIndex];
       const columnValues = tablet.values.map((row) => row[colIndex]);
 
+      // Track null values for this column
+      const nullBitmap: boolean[] = [];
+      let hasNull = false;
+
+      for (let rowIndex = 0; rowIndex < columnValues.length; rowIndex++) {
+        const isNull =
+          columnValues[rowIndex] === null ||
+          columnValues[rowIndex] === undefined;
+        nullBitmap.push(isNull);
+        if (isNull) {
+          hasNull = true;
+        }
+      }
+
       const buffer = this.serializeColumn(columnValues, dataType);
       buffers.push(buffer);
+      bitMaps.push(hasNull ? nullBitmap : null);
     }
+
+    // Append bitmap information
+    const bitmapBuffer = this.serializeBitMaps(
+      bitMaps,
+      tablet.timestamps.length,
+    );
+    buffers.push(bitmapBuffer);
 
     return Buffer.concat(buffers);
   }
@@ -212,48 +335,99 @@ export class Session {
     // VECTOR(6), UNKNOWN(7), TIMESTAMP(8), DATE(9), BLOB(10), STRING(11), OBJECT(12)
     switch (dataType) {
       case 0: // BOOLEAN
-        return Buffer.from(values.map((v) => (v ? 1 : 0)));
-      case 1: // INT32
-        return Buffer.from(new Int32Array(values).buffer);
-      case 2: // INT64
-        return Buffer.from(new BigInt64Array(values.map(BigInt)).buffer);
-      case 3: { // FLOAT
-        return Buffer.from(new Float32Array(values).buffer);
+        return Buffer.from(
+          values.map((v) => (v === null || v === undefined ? 0 : v ? 1 : 0)),
+        );
+      case 1: {
+        // INT32 - Use big-endian
+        const buffer = Buffer.alloc(values.length * 4);
+        values.forEach((v, i) => {
+          buffer.writeInt32BE(v === null || v === undefined ? 0 : v, i * 4);
+        });
+        return buffer;
       }
-      case 4: { // DOUBLE
-        return Buffer.from(new Float64Array(values).buffer);
+      case 2: {
+        // INT64 - Use big-endian
+        const buffer = Buffer.alloc(values.length * 8);
+        values.forEach((v, i) => {
+          buffer.writeBigInt64BE(
+            v === null || v === undefined ? BigInt(0) : BigInt(v),
+            i * 8,
+          );
+        });
+        return buffer;
+      }
+      case 3: {
+        // FLOAT - Use big-endian
+        const buffer = Buffer.alloc(values.length * 4);
+        values.forEach((v, i) => {
+          buffer.writeFloatBE(v === null || v === undefined ? 0.0 : v, i * 4);
+        });
+        return buffer;
+      }
+      case 4: {
+        // DOUBLE - Use big-endian
+        const buffer = Buffer.alloc(values.length * 8);
+        values.forEach((v, i) => {
+          buffer.writeDoubleBE(v === null || v === undefined ? 0.0 : v, i * 8);
+        });
+        return buffer;
       }
       case 5: // TEXT
-      case 11: { // STRING (similar to TEXT)
+      case 11: {
+        // STRING (similar to TEXT)
         const strBuffers = values.map((v) => {
-          const str = String(v);
+          const str = v === null || v === undefined ? "" : String(v);
+          const strBytes = Buffer.from(str, "utf8");
           const len = Buffer.alloc(4);
-          len.writeInt32LE(str.length);
-          return Buffer.concat([len, Buffer.from(str, 'utf8')]);
+          len.writeInt32BE(strBytes.length); // Write byte length in big-endian (Java standard)
+          return Buffer.concat([len, strBytes]);
         });
         return Buffer.concat(strBuffers);
       }
-      case 8: { // TIMESTAMP (stored as INT64 - milliseconds)
-        return Buffer.from(new BigInt64Array(values.map(v => {
-          if (v instanceof Date) {
-            return BigInt(v.getTime());
-          }
-          return BigInt(v);
-        })).buffer);
+      case 8: {
+        // TIMESTAMP (stored as INT64 - milliseconds)
+        return Buffer.from(
+          new BigInt64Array(
+            values.map((v) => {
+              if (v === null || v === undefined) {
+                return BigInt(0);
+              }
+              if (v instanceof Date) {
+                return BigInt(v.getTime());
+              }
+              return BigInt(v);
+            }),
+          ).buffer,
+        );
       }
-      case 9: { // DATE (stored as INT32 - days since epoch)
-        return Buffer.from(new Int32Array(values.map(v => {
-          if (v instanceof Date) {
-            return Math.floor(v.getTime() / (24 * 60 * 60 * 1000));
+      case 9: {
+        // DATE (stored as INT32 - days since epoch) - Use big-endian
+        const buffer = Buffer.alloc(values.length * 4);
+        values.forEach((v, i) => {
+          let days = 0;
+          if (v !== null && v !== undefined) {
+            if (v instanceof Date) {
+              days = Math.floor(v.getTime() / (24 * 60 * 60 * 1000));
+            } else {
+              days = v;
+            }
           }
-          return v;
-        })).buffer);
+          buffer.writeInt32BE(days, i * 4);
+        });
+        return buffer;
       }
-      case 10: { // BLOB
+      case 10: {
+        // BLOB
         const blobBuffers = values.map((v) => {
-          const blob = Buffer.isBuffer(v) ? v : Buffer.from(v);
+          const blob =
+            v === null || v === undefined
+              ? Buffer.alloc(0)
+              : Buffer.isBuffer(v)
+                ? v
+                : Buffer.from(v);
           const len = Buffer.alloc(4);
-          len.writeInt32LE(blob.length);
+          len.writeInt32BE(blob.length); // Write byte length in big-endian (Java standard)
           return Buffer.concat([len, blob]);
         });
         return Buffer.concat(blobBuffers);
@@ -263,138 +437,353 @@ export class Session {
     }
   }
 
-  private async parseQueryResult(response: any): Promise<QueryResult> {
-    const result: QueryResult = {
-      columns: response.columns || [],
-      dataTypes: response.dataTypeList || [],
-      rows: [],
-      queryId: response.queryId,
-    };
+  private serializeBitMaps(
+    bitMaps: (boolean[] | null)[],
+    rowCount: number,
+  ): Buffer {
+    // Serialize bitmap information for null values
+    // Format: for each column, one byte indicating if column has null, followed by bitmap bytes if it does
+    const buffers: Buffer[] = [];
 
-    if (response.queryDataSet) {
-      const dataset = response.queryDataSet;
-      result.rows = await this.parseDataSet(
-        dataset,
-        response.columns.length,
-        response.dataTypeList
+    for (const bitMap of bitMaps) {
+      const columnHasNull = bitMap !== null;
+      // Write one byte: 1 if column has null, 0 if not
+      buffers.push(Buffer.from([columnHasNull ? 1 : 0]));
+
+      if (columnHasNull && bitMap) {
+        // Calculate number of bytes needed for bitmap (1 bit per row)
+        // Use Math.ceil to properly round up only when needed
+        const bitmapByteCount = Math.ceil(rowCount / 8);
+        const bitmapBytes = Buffer.alloc(bitmapByteCount);
+
+        // Set bits in bitmap (1 = null, 0 = not null)
+        for (let i = 0; i < bitMap.length; i++) {
+          if (bitMap[i]) {
+            const byteIndex = Math.floor(i / 8);
+            const bitIndex = i % 8;
+            bitmapBytes[byteIndex] |= 1 << bitIndex;
+          }
+        }
+
+        buffers.push(bitmapBytes);
+      }
+    }
+
+    return Buffer.concat(buffers);
+  }
+
+  /**
+   * Parse queryResult (TsBlock format) - new format used by IoTDB
+   * Each buffer in queryResult is a complete TsBlock containing:
+   * - Value column count (INT32)
+   * - Value column data types (list of BYTE)
+   * - Position count (INT32)
+   * - Column encodings (list of BYTE)
+   * - Time column data
+   * - Value columns data
+   *
+   * @param ignoreTimeStamp - If true, no time column is present
+   */
+  async parseQueryResult(
+    queryResult: Buffer[],
+    _columnCount: number,
+    dataTypes: string[],
+    ignoreTimeStamp: boolean = false,
+  ): Promise<any[][]> {
+    const rows: any[][] = [];
+
+    if (!queryResult || queryResult.length === 0) {
+      logger.debug("parseQueryResult: queryResult is null or empty");
+      return rows;
+    }
+
+    logger.debug(
+      `parseQueryResult: queryResult has ${queryResult.length} TsBlocks, ignoreTimeStamp=${ignoreTimeStamp}`,
+    );
+    logger.debug(`parseQueryResult: dataTypes: ${JSON.stringify(dataTypes)}`);
+
+    // Process each TsBlock in queryResult
+    for (let blockIndex = 0; blockIndex < queryResult.length; blockIndex++) {
+      const tsBlockBuffer = Buffer.isBuffer(queryResult[blockIndex])
+        ? queryResult[blockIndex]
+        : Buffer.from(queryResult[blockIndex]);
+
+      logger.debug(
+        `parseQueryResult: Processing TsBlock ${blockIndex}, size=${tsBlockBuffer.length} bytes`,
+      );
+
+      try {
+        const blockRows = this.parseTsBlock(
+          tsBlockBuffer,
+          dataTypes,
+          ignoreTimeStamp,
+        );
+        rows.push(...blockRows);
+      } catch (error) {
+        logger.error(`Error parsing TsBlock ${blockIndex}:`, error);
+        throw error;
+      }
+    }
+
+    logger.debug(`parseQueryResult: returning ${rows.length} total rows`);
+    return rows;
+  }
+
+  /**
+   * Parse a single TsBlock buffer
+   * TsBlock format (from Apache IoTDB C# client):
+   * +-------------+---------------+---------+------------+-----------+----------+
+   * | val col cnt | val col types | pos cnt | encodings  | time col  | val col  |
+   * +-------------+---------------+---------+------------+-----------+----------+
+   * | int32       | list[byte]    | int32   | list[byte] |  bytes    | bytes    |
+   * +-------------+---------------+---------+------------+-----------+----------+
+   *
+   * IMPORTANT: TsBlock ALWAYS contains time column encoding and time column data,
+   * regardless of the ignoreTimeStamp setting. The ignoreTimeStamp flag only
+   * affects whether the timestamp is included in the returned row data, not the
+   * TsBlock binary format. This matches the behavior of iotdb-client-csharp.
+   */
+  private parseTsBlock(
+    buffer: Buffer,
+    dataTypes: string[],
+    ignoreTimeStamp: boolean,
+  ): any[][] {
+    let offset = 0;
+
+    // Read value column count (INT32, 4 bytes, BIG ENDIAN)
+    const valueColumnCount = buffer.readInt32BE(offset);
+    offset += 4;
+    logger.debug(`TsBlock: valueColumnCount=${valueColumnCount}`);
+
+    // Read value column data types (valueColumnCount bytes)
+    const valueColumnTypes: number[] = [];
+    for (let i = 0; i < valueColumnCount; i++) {
+      valueColumnTypes.push(buffer.readUInt8(offset));
+      offset += 1;
+    }
+    logger.debug(
+      `TsBlock: valueColumnTypes=${JSON.stringify(valueColumnTypes)}`,
+    );
+
+    // Read position count (INT32, 4 bytes, BIG ENDIAN)
+    const positionCount = buffer.readInt32BE(offset);
+    offset += 4;
+    logger.debug(`TsBlock: positionCount=${positionCount}`);
+
+    // Read encodings - time column + value columns
+    // Time column encoding (1 byte)
+    const timeEncoding: ColumnEncoding = buffer.readUInt8(offset);
+    offset += 1;
+    logger.debug(`TsBlock: timeEncoding=${timeEncoding}`);
+
+    // Value column encodings (valueColumnCount bytes)
+    const valueEncodings: ColumnEncoding[] = [];
+    for (let i = 0; i < valueColumnCount; i++) {
+      valueEncodings.push(buffer.readUInt8(offset));
+      offset += 1;
+    }
+    logger.debug(`TsBlock: valueEncodings=${JSON.stringify(valueEncodings)}`);
+
+    // Read time column using decoder
+    // IMPORTANT: TsBlock ALWAYS contains time column data, even when ignoreTimeStamp=true
+    // This matches the behavior of iotdb-client-csharp
+    const timeDecoder = BaseColumnDecoder.getDecoder(timeEncoding);
+    const { column: timeColumn, bytesRead: timeColumnBytesRead } =
+      timeDecoder.readColumn(buffer, offset, 8 /* TIMESTAMP */, positionCount);
+    offset += timeColumnBytesRead;
+    logger.debug(
+      `TsBlock: read time column, ${timeColumn.values.length} timestamps, ignoreTimeStamp=${ignoreTimeStamp}`,
+    );
+
+    // Read value columns using decoders
+    const valueColumns: Column[] = [];
+    for (let i = 0; i < valueColumnCount; i++) {
+      const dataType = valueColumnTypes[i];
+      const encoding = valueEncodings[i];
+
+      const decoder = BaseColumnDecoder.getDecoder(encoding);
+      const { column, bytesRead } = decoder.readColumn(
+        buffer,
+        offset,
+        dataType,
+        positionCount,
+      );
+      valueColumns.push(column);
+      offset += bytesRead;
+
+      logger.debug(
+        `TsBlock: read column ${i}, type=${dataType}, encoding=${encoding}, ${column.values.length} values`,
       );
     }
 
-    // Fetch more data if available
-    if (response.moreData) {
-      const moreRows = await this.fetchResults(response.queryId);
-      result.rows.push(...moreRows);
+    // Build rows from columns
+    const rows: any[][] = [];
+    for (let rowIndex = 0; rowIndex < positionCount; rowIndex++) {
+      const row: any[] = [];
+
+      // Add timestamp only if not ignoring timestamp
+      // Note: timeColumn is always present in TsBlock, but we only include it in results when needed
+      if (
+        !ignoreTimeStamp &&
+        timeColumn &&
+        rowIndex < timeColumn.values.length
+      ) {
+        row.push(timeColumn.values[rowIndex]);
+      }
+
+      // Add column values
+      for (let colIndex = 0; colIndex < valueColumns.length; colIndex++) {
+        row.push(valueColumns[colIndex].values[rowIndex]);
+      }
+
+      rows.push(row);
     }
 
-    return result;
+    return rows;
   }
 
-  private async fetchResults(queryId: number): Promise<any[][]> {
-    const client = this.connection.getClient();
-    const sessionId = this.connection.getSessionId();
+  /**
+   * Helper method to convert data type string to numeric code
+   */
+  private getDataTypeCode(typeStr: string | undefined): number {
+    if (!typeStr) return 5; // Default to TEXT
 
-    const req = new ttypes.TSFetchResultsReq({
-      sessionId: sessionId,
-      statement: '',
-      fetchSize: this.config.fetchSize,
-      queryId: queryId,
-      isAlign: true,
-    });
+    const type = String(typeStr).toUpperCase();
+    if (type.includes("BOOLEAN")) return 0;
+    else if (type.includes("INT32")) return 1;
+    else if (type.includes("INT64")) return 2;
+    else if (type.includes("FLOAT")) return 3;
+    else if (type.includes("DOUBLE")) return 4;
+    else if (type.includes("TEXT")) return 5;
+    else if (type.includes("TIMESTAMP")) return 8;
+    else if (type.includes("DATE")) return 9;
+    else if (type.includes("BLOB")) return 10;
+    else if (type.includes("STRING")) return 11;
+    return 5; // Default to TEXT
+  }
 
-    return new Promise((resolve, reject) => {
-      client.fetchResultsV2(req, async (err: Error, response: any) => {
-        if (err) {
-          reject(err);
-          return;
+  /**
+   * Helper method to determine row count from a buffer based on data type
+   */
+  private getRowCountFromBuffer(buffer: Buffer, dataType: number): number {
+    const length = buffer.length;
+
+    // Calculate based on fixed-size types
+    switch (dataType) {
+      case 0: // BOOLEAN - 1 byte per value
+        return length;
+      case 1: // INT32 - 4 bytes per value
+      case 9: // DATE - 4 bytes per value
+        return Math.floor(length / 4);
+      case 2: // INT64 - 8 bytes per value
+      case 8: // TIMESTAMP - 8 bytes per value
+        return Math.floor(length / 8);
+      case 3: // FLOAT - 4 bytes per value
+        return Math.floor(length / 4);
+      case 4: // DOUBLE - 8 bytes per value
+        return Math.floor(length / 8);
+      case 5: // TEXT - variable length, need to parse
+      case 10: // BLOB - variable length
+      case 11: // STRING - variable length
+        // For variable-length types, count entries by parsing length prefixes
+        let count = 0;
+        let offset = 0;
+        while (offset + 4 <= length) {
+          const strLength = buffer.readInt32BE(offset);
+          offset += 4 + strLength;
+          count++;
         }
-
-        if (response.status.code !== 200) {
-          reject(new Error(response.status.message || 'Fetch results failed'));
-          return;
-        }
-
-        const rows = await this.parseDataSet(
-          response.queryDataSet,
-          response.queryDataSet?.valueList?.length || 0,
-          []
+        return count;
+      default:
+        logger.warn(
+          `Unknown data type ${dataType}, cannot determine row count`,
         );
-
-        if (response.moreData) {
-          const moreRows = await this.fetchResults(queryId);
-          resolve([...rows, ...moreRows]);
-        } else {
-          resolve(rows);
-        }
-      });
-    });
+        return 0;
+    }
   }
 
-  private async parseDataSet(
+  // parseDataSet is used by SessionDataSet for parsing query results
+  // Keep it as public for SessionDataSet to access
+  async parseDataSet(
     dataset: any,
     _columnCount: number,
-    dataTypes: string[]
+    dataTypes: string[],
   ): Promise<any[][]> {
     const rows: any[][] = [];
 
     if (!dataset) {
-      logger.debug('parseDataSet: dataset is null or undefined');
+      logger.debug("parseDataSet: dataset is null or undefined");
       return rows;
     }
 
     // Handle case where dataset.time is not a Buffer (might be an array or null)
     if (!dataset.time) {
-      logger.debug('parseDataSet: dataset.time is null or undefined');
+      logger.debug("parseDataSet: dataset.time is null or undefined");
       return rows;
     }
 
-    logger.debug(`parseDataSet: dataset.time type: ${typeof dataset.time}, isBuffer: ${Buffer.isBuffer(dataset.time)}, length: ${dataset.time.length || 'N/A'}`);
-    logger.debug(`parseDataSet: dataset.valueList type: ${typeof dataset.valueList}, isArray: ${Array.isArray(dataset.valueList)}, length: ${dataset.valueList?.length || 'N/A'}`);
+    logger.debug(
+      `parseDataSet: dataset.time type: ${typeof dataset.time}, isBuffer: ${Buffer.isBuffer(dataset.time)}, length: ${dataset.time.length || "N/A"}`,
+    );
+    logger.debug(
+      `parseDataSet: dataset.valueList type: ${typeof dataset.valueList}, isArray: ${Array.isArray(dataset.valueList)}, length: ${dataset.valueList?.length || "N/A"}`,
+    );
     logger.debug(`parseDataSet: dataTypes: ${JSON.stringify(dataTypes)}`);
 
     // Convert time to Buffer if it's not already
-    const timeBuffer = Buffer.isBuffer(dataset.time) ? dataset.time : Buffer.from(dataset.time);
-    
+    const timeBuffer = Buffer.isBuffer(dataset.time)
+      ? dataset.time
+      : Buffer.from(dataset.time);
+
     // Validate buffer has sufficient length
     const timeBufferLength = timeBuffer.length;
     if (timeBufferLength === 0 || timeBufferLength % 8 !== 0) {
-      logger.warn('Invalid time buffer length:', timeBufferLength);
+      logger.warn("Invalid time buffer length:", timeBufferLength);
       return rows;
     }
 
     const rowCount = Math.floor(timeBufferLength / 8);
     logger.debug(`parseDataSet: rowCount = ${rowCount}`);
-    
+
     // Parse value buffers
     const parsedColumns: any[][] = [];
     if (dataset.valueList && Array.isArray(dataset.valueList)) {
       for (let colIndex = 0; colIndex < dataset.valueList.length; colIndex++) {
-        const valueBuffer = Buffer.isBuffer(dataset.valueList[colIndex]) 
-          ? dataset.valueList[colIndex] 
+        const valueBuffer = Buffer.isBuffer(dataset.valueList[colIndex])
+          ? dataset.valueList[colIndex]
           : Buffer.from(dataset.valueList[colIndex]);
-        const bitmap = dataset.bitmapList && dataset.bitmapList[colIndex]
-          ? (Buffer.isBuffer(dataset.bitmapList[colIndex]) 
-              ? dataset.bitmapList[colIndex] 
-              : Buffer.from(dataset.bitmapList[colIndex]))
-          : null;
-        
+        const bitmap =
+          dataset.bitmapList && dataset.bitmapList[colIndex]
+            ? Buffer.isBuffer(dataset.bitmapList[colIndex])
+              ? dataset.bitmapList[colIndex]
+              : Buffer.from(dataset.bitmapList[colIndex])
+            : null;
+
         // Get data type - dataTypes might be an array of strings or numbers
         let dataType = 5; // Default to TEXT
         if (dataTypes && dataTypes[colIndex] !== undefined) {
           const typeStr = String(dataTypes[colIndex]).toUpperCase();
-          if (typeStr.includes('BOOLEAN')) dataType = 0;
-          else if (typeStr.includes('INT32')) dataType = 1;
-          else if (typeStr.includes('INT64')) dataType = 2;
-          else if (typeStr.includes('FLOAT')) dataType = 3;
-          else if (typeStr.includes('DOUBLE')) dataType = 4;
-          else if (typeStr.includes('TEXT')) dataType = 5;
-          else if (typeStr.includes('TIMESTAMP')) dataType = 8;
-          else if (typeStr.includes('DATE')) dataType = 9;
-          else if (typeStr.includes('BLOB')) dataType = 10;
-          else if (typeStr.includes('STRING')) dataType = 11;
+          if (typeStr.includes("BOOLEAN")) dataType = 0;
+          else if (typeStr.includes("INT32")) dataType = 1;
+          else if (typeStr.includes("INT64")) dataType = 2;
+          else if (typeStr.includes("FLOAT")) dataType = 3;
+          else if (typeStr.includes("DOUBLE")) dataType = 4;
+          else if (typeStr.includes("TEXT")) dataType = 5;
+          else if (typeStr.includes("TIMESTAMP")) dataType = 8;
+          else if (typeStr.includes("DATE")) dataType = 9;
+          else if (typeStr.includes("BLOB")) dataType = 10;
+          else if (typeStr.includes("STRING")) dataType = 11;
         }
-        
-        logger.debug(`parseDataSet: column ${colIndex}, dataType = ${dataType}, valueBuffer.length = ${valueBuffer.length}`);
-        const columnValues = this.deserializeColumn(valueBuffer, dataType, rowCount, bitmap);
+
+        logger.debug(
+          `parseDataSet: column ${colIndex}, dataType = ${dataType}, valueBuffer.length = ${valueBuffer.length}`,
+        );
+        const columnValues = this.deserializeColumn(
+          valueBuffer,
+          dataType,
+          rowCount,
+          bitmap,
+        );
         parsedColumns.push(columnValues);
       }
     }
@@ -402,17 +791,17 @@ export class Session {
     // Build rows
     for (let i = 0; i < rowCount; i++) {
       const row: any[] = [];
-      
+
       // Add timestamp
       if (i * 8 + 8 <= timeBufferLength) {
         row.push(timeBuffer.readBigInt64LE(i * 8));
       }
-      
+
       // Add column values
       for (let colIndex = 0; colIndex < parsedColumns.length; colIndex++) {
         row.push(parsedColumns[colIndex][i]);
       }
-      
+
       rows.push(row);
     }
 
@@ -420,12 +809,18 @@ export class Session {
     return rows;
   }
 
-  private deserializeColumn(buffer: Buffer, dataType: number, rowCount: number, bitmap: Buffer | null): any[] {
+  private deserializeColumn(
+    buffer: Buffer,
+    dataType: number,
+    rowCount: number,
+    bitmap: Buffer | null,
+  ): any[] {
     const values: any[] = [];
-    
+
     try {
       switch (dataType) {
-        case 0: { // BOOLEAN
+        case 0: {
+          // BOOLEAN
           for (let i = 0; i < rowCount; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
@@ -435,104 +830,106 @@ export class Session {
           }
           break;
         }
-        case 1: { // INT32
-          const int32Array = new Int32Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 4));
-          for (let i = 0; i < rowCount && i < int32Array.length; i++) {
+        case 1: {
+          // INT32 - TSQueryDataSet uses BIG ENDIAN
+          for (let i = 0; i < rowCount; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
             } else {
-              values.push(int32Array[i]);
+              values.push(buffer.readInt32BE(i * 4));
             }
           }
           break;
         }
-        case 2: { // INT64
-          const bigInt64Array = new BigInt64Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 8));
-          for (let i = 0; i < rowCount && i < bigInt64Array.length; i++) {
+        case 2: {
+          // INT64 - TSQueryDataSet uses BIG ENDIAN
+          for (let i = 0; i < rowCount; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
             } else {
-              values.push(bigInt64Array[i]);
+              values.push(buffer.readBigInt64BE(i * 8));
             }
           }
           break;
         }
-        case 3: { // FLOAT
-          const float32Array = new Float32Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 4));
-          for (let i = 0; i < rowCount && i < float32Array.length; i++) {
+        case 3: {
+          // FLOAT - TSQueryDataSet uses BIG ENDIAN
+          for (let i = 0; i < rowCount; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
             } else {
-              values.push(float32Array[i]);
+              values.push(buffer.readFloatBE(i * 4));
             }
           }
           break;
         }
-        case 4: { // DOUBLE
-          const float64Array = new Float64Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 8));
-          for (let i = 0; i < rowCount && i < float64Array.length; i++) {
+        case 4: {
+          // DOUBLE - TSQueryDataSet uses BIG ENDIAN
+          for (let i = 0; i < rowCount; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
             } else {
-              values.push(float64Array[i]);
+              values.push(buffer.readDoubleBE(i * 8));
             }
           }
           break;
         }
         case 5: // TEXT
-        case 11: { // STRING (similar to TEXT)
+        case 11: {
+          // STRING (similar to TEXT) - TSQueryDataSet uses BIG ENDIAN for length
           let offset = 0;
           for (let i = 0; i < rowCount && offset < buffer.length; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
             } else {
               if (offset + 4 > buffer.length) break;
-              const strLength = buffer.readInt32LE(offset);
+              const strLength = buffer.readInt32BE(offset);
               offset += 4;
               if (offset + strLength > buffer.length) break;
-              const str = buffer.toString('utf8', offset, offset + strLength);
+              const str = buffer.toString("utf8", offset, offset + strLength);
               values.push(str);
               offset += strLength;
             }
           }
           break;
         }
-        case 8: { // TIMESTAMP (stored as INT64 - milliseconds)
-          const bigInt64Array = new BigInt64Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 8));
-          for (let i = 0; i < rowCount && i < bigInt64Array.length; i++) {
+        case 8: {
+          // TIMESTAMP (stored as INT64 - milliseconds) - TSQueryDataSet uses BIG ENDIAN
+          for (let i = 0; i < rowCount; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
             } else {
               // Convert milliseconds to Date object
-              const timestamp = Number(bigInt64Array[i]);
+              const timestamp = Number(buffer.readBigInt64BE(i * 8));
               const date = new Date(timestamp);
               values.push(date);
             }
           }
           break;
         }
-        case 9: { // DATE (stored as INT32 - days since epoch)
-          const int32Array = new Int32Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 4));
-          for (let i = 0; i < rowCount && i < int32Array.length; i++) {
+        case 9: {
+          // DATE (stored as INT32 - days since epoch) - TSQueryDataSet uses BIG ENDIAN
+          for (let i = 0; i < rowCount; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
             } else {
               // Convert days since epoch to Date object
-              const days = int32Array[i];
+              const days = buffer.readInt32BE(i * 4);
               const date = new Date(days * 24 * 60 * 60 * 1000);
               values.push(date);
             }
           }
           break;
         }
-        case 10: { // BLOB
+        case 10: {
+          // BLOB - TSQueryDataSet uses BIG ENDIAN for length
           let offset = 0;
           for (let i = 0; i < rowCount && offset < buffer.length; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
             } else {
               if (offset + 4 > buffer.length) break;
-              const blobLength = buffer.readInt32LE(offset);
+              const blobLength = buffer.readInt32BE(offset);
               offset += 4;
               if (offset + blobLength > buffer.length) break;
               const blob = buffer.slice(offset, offset + blobLength);
@@ -549,13 +946,13 @@ export class Session {
           }
       }
     } catch (error) {
-      logger.error('Error deserializing column:', error);
+      logger.error("Error deserializing column:", error);
       // Fill with nulls on error
       for (let i = values.length; i < rowCount; i++) {
         values.push(null);
       }
     }
-    
+
     return values;
   }
 
