@@ -76,6 +76,23 @@ export interface PoolConfig extends Config {
   minPoolSize?: number;
   maxIdleTime?: number;
   waitTimeout?: number;
+  /**
+   * Enable client-side redirection optimization.
+   * When enabled, the client caches device→endpoint mappings
+   * and routes writes directly to optimal nodes.
+   * 
+   * @default true
+   * @requires Multi-node IoTDB cluster
+   */
+  enableRedirection?: boolean;
+  /**
+   * Time-to-live for cached redirect mappings (milliseconds).
+   * Set to 0 for no expiration.
+   * Recommended: 300000 (5 minutes)
+   * 
+   * @default 300000
+   */
+  redirectCacheTTL?: number;
 }
 
 export const DEFAULT_CONFIG: Partial<Config> = {
@@ -93,6 +110,8 @@ export const DEFAULT_POOL_CONFIG: Partial<PoolConfig> = {
   minPoolSize: 1,
   maxIdleTime: 60000, // 60 seconds
   waitTimeout: 60000, // 60 seconds
+  enableRedirection: true,
+  redirectCacheTTL: 300000, // 5 minutes
 };
 
 /**

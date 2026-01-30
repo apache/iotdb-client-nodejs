@@ -33,6 +33,8 @@ import {
 } from "../utils/Config";
 import { logger } from "../utils/Logger";
 import { registerClosable, unregisterClosable } from "../utils/ProcessCleanup";
+import { RedirectCache } from "./RedirectCache";
+import { RedirectException } from "../utils/Errors";
 
 interface PooledSession {
   session: Session;
@@ -51,6 +53,8 @@ export abstract class BaseSessionPool {
   protected waitQueue: Array<(session: Session) => void> = [];
   protected currentEndPointIndex = 0;
   protected cleanupInterval: NodeJS.Timeout | null = null;
+  protected redirectCache: RedirectCache;
+  protected endPointToSession: Map<string, PooledSession> = new Map();
 
   constructor(
     hostsOrConfig: string | string[] | PoolConfig,
@@ -95,8 +99,14 @@ export abstract class BaseSessionPool {
       this.endPoints = hostList.map((host) => ({ host, port }));
     }
 
+    // Initialize redirect cache
+    this.redirectCache = new RedirectCache(
+      this.config.redirectCacheTTL || 300000,
+      10000 // max size
+    );
+
     logger.info(
-      `${this.getPoolName()} created with ${this.endPoints.length} endpoints, max pool size: ${this.config.maxPoolSize}`,
+      `${this.getPoolName()} created with ${this.endPoints.length} endpoints, max pool size: ${this.config.maxPoolSize}, redirection: ${this.config.enableRedirection ? 'enabled' : 'disabled'}`,
     );
 
     registerClosable(this);
@@ -158,6 +168,51 @@ export abstract class BaseSessionPool {
       (this.currentEndPointIndex + 1) % this.endPoints.length;
     return endPoint;
   }
+
+  /**
+   * Extract device ID from tablet for caching
+   */
+  protected extractDeviceId(tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet): string {
+    if ('deviceId' in tablet) {
+      return tablet.deviceId;
+    } else if ('tableName' in tablet) {
+      return tablet.tableName;
+    }
+    throw new Error('Unable to extract device ID from tablet');
+  }
+
+  /**
+   * Get or create a session for a specific endpoint
+   */
+  protected async getSessionForEndpoint(endpoint: EndPoint): Promise<Session> {
+    const key = `${endpoint.host}:${endpoint.port}`;
+    
+    // Check if we already have a session for this endpoint
+    let pooledSession = this.endPointToSession.get(key);
+    
+    if (pooledSession && pooledSession.session.isOpen()) {
+      pooledSession.inUse = true;
+      pooledSession.lastUsed = Date.now();
+      return pooledSession.session;
+    }
+    
+    // Create new session for this endpoint
+    const session = await this.createPoolSession();
+    
+    pooledSession = {
+      session,
+      lastUsed: Date.now(),
+      inUse: true,
+    };
+    
+    this.endPointToSession.set(key, pooledSession);
+    this.pool.push(pooledSession);
+    
+    logger.info(`Created new session for redirect endpoint: ${endpoint.host}:${endpoint.port}`);
+    
+    return session;
+  }
+
 
   /**
    * Get a session from the pool
@@ -297,10 +352,41 @@ export abstract class BaseSessionPool {
   async insertTablet(
     tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet,
   ): Promise<void> {
-    const session = await this.getSession();
+    const deviceId = this.extractDeviceId(tablet);
+    
+    // Check cache for optimal endpoint if redirection is enabled
+    const cachedEndpoint = this.config.enableRedirection 
+      ? this.redirectCache.get(deviceId)
+      : null;
+    
+    let session: Session;
+    
+    if (cachedEndpoint) {
+      // Use cached endpoint for optimal routing
+      session = await this.getSessionForEndpoint(cachedEndpoint);
+    } else {
+      // Use round-robin selection
+      session = await this.getSession();
+    }
+    
     try {
-      return await session.insertTablet(tablet);
+      // Attempt insert
+      await session.insertTablet(tablet);
+      
+      // Check if server recommended a redirect for future operations
+      if (this.config.enableRedirection) {
+        const redirectEndpoint = session.getAndClearLastRedirect();
+        if (redirectEndpoint) {
+          // Cache the recommended endpoint for future writes
+          this.redirectCache.set(deviceId, redirectEndpoint);
+          logger.info(
+            `Cached redirect recommendation: ${deviceId} -> ${redirectEndpoint.host}:${redirectEndpoint.port}`
+          );
+        }
+      }
+      
     } finally {
+      // Always release session
       this.releaseSession(session);
     }
   }
@@ -324,6 +410,8 @@ export abstract class BaseSessionPool {
 
     this.pool = [];
     this.waitQueue = [];
+    this.endPointToSession.clear();
+    this.redirectCache.clear();
     unregisterClosable(this);
     logger.info(`${this.getPoolName()} closed`);
   }

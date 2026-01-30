@@ -29,6 +29,7 @@ import { registerClosable, unregisterClosable } from "../utils/ProcessCleanup";
 import { SessionDataSet } from "./SessionDataSet";
 import { RowRecord } from "./RowRecord";
 import { BaseColumnDecoder, ColumnEncoding, Column } from "./ColumnDecoder";
+import { RedirectException } from "../utils/Errors";
 
 const ttypes = require("../thrift/generated/client_types");
 
@@ -182,6 +183,7 @@ export interface Tablet {
 export class Session {
   protected config: Config;
   protected connection: Connection;
+  private lastRedirectEndpoint: EndPoint | null = null;
 
   constructor(config: Config) {
     // Validate config - either host/port or nodeUrls must be provided
@@ -227,6 +229,16 @@ export class Session {
   async close(): Promise<void> {
     await this.connection.close();
     unregisterClosable(this);
+  }
+
+  /**
+   * Get and clear the last redirect endpoint recommendation.
+   * Returns null if no redirect was recommended in the last operation.
+   */
+  getAndClearLastRedirect(): EndPoint | null {
+    const redirect = this.lastRedirectEndpoint;
+    this.lastRedirectEndpoint = null;
+    return redirect;
   }
 
   /**
@@ -435,14 +447,21 @@ export class Session {
         }
 
         // Handle redirection recommendation (code 400)
-        // Note: Code 400 means write succeeded but server recommends a better endpoint for future operations
+        // Note: Code 400 means write SUCCEEDED but server recommends a different endpoint for future operations
         if (response.code === 400) {
-          logger.warn(`Server recommends redirection (code 400). Write succeeded but future operations may benefit from using a different endpoint.`);
+          // Store redirect recommendation if provided
           if (response.redirectNode) {
-            logger.warn(`Recommended endpoint: ${response.redirectNode.ip || response.redirectNode.internalIp}:${response.redirectNode.port}`);
+            this.lastRedirectEndpoint = {
+              host: response.redirectNode.internalIp || response.redirectNode.ip,
+              port: response.redirectNode.port,
+            };
+            logger.debug(
+              `Server recommends endpoint ${this.lastRedirectEndpoint.host}:${this.lastRedirectEndpoint.port} for future writes to ${tablet.deviceId}`
+            );
+          } else {
+            logger.debug(`Server returned code 400 without redirect node for ${tablet.deviceId}`);
           }
-          logger.warn(`Client-side redirection is not yet implemented. See docs/redirection-design.md for future implementation plans.`);
-          // Resolve successfully since the write operation completed
+          // Resolve successfully - the write already succeeded
           resolve();
           return;
         }
@@ -522,14 +541,21 @@ export class Session {
         }
 
         // Handle redirection recommendation (code 400)
-        // Note: Code 400 means write succeeded but server recommends a better endpoint for future operations
+        // Note: Code 400 means write SUCCEEDED but server recommends a different endpoint for future operations
         if (response.code === 400) {
-          logger.warn(`Server recommends redirection for table ${tablet.tableName} (code 400). Write succeeded but future operations may benefit from using a different endpoint.`);
+          // Store redirect recommendation if provided
           if (response.redirectNode) {
-            logger.warn(`Recommended endpoint: ${response.redirectNode.ip || response.redirectNode.internalIp}:${response.redirectNode.port}`);
+            this.lastRedirectEndpoint = {
+              host: response.redirectNode.internalIp || response.redirectNode.ip,
+              port: response.redirectNode.port,
+            };
+            logger.debug(
+              `Server recommends endpoint ${this.lastRedirectEndpoint.host}:${this.lastRedirectEndpoint.port} for future writes to table ${tablet.tableName}`
+            );
+          } else {
+            logger.debug(`Server returned code 400 without redirect node for table ${tablet.tableName}`);
           }
-          logger.warn(`Client-side redirection is not yet implemented. See docs/redirection-design.md for future implementation plans.`);
-          // Resolve successfully since the write operation completed
+          // Resolve successfully - the write already succeeded
           resolve();
           return;
         }
