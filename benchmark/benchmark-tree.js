@@ -87,8 +87,8 @@ function generateWorkload(testData, config) {
     // Loop-based execution: each loop writes one batch for all devices
     for (let loopIdx = 0; loopIdx < config.LOOP; loopIdx++) {
       for (const device of testData.devices) {
-        // Each device has one batch in LOOP mode
-        const batch = device.batches[0];
+        // Use shared batch template (same for all devices)
+        const batch = testData.sharedBatches[0];
         workload.push({
           deviceId: device.deviceId,
           measurements: device.measurements,
@@ -102,7 +102,8 @@ function generateWorkload(testData, config) {
   } else {
     // Legacy mode: all batches for all devices
     for (const device of testData.devices) {
-      for (const batch of device.batches) {
+      for (let batchIdx = 0; batchIdx < device.batchCount; batchIdx++) {
+        const batch = testData.sharedBatches[batchIdx];
         workload.push({
           deviceId: device.deviceId,
           measurements: device.measurements,

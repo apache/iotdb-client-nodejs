@@ -17,16 +17,45 @@
  * under the License.
  */
 
-import { Session } from './Session';
+import { Session } from "./Session";
+import { logger } from "../utils/Logger";
 
 /**
  * TableSession extends Session for table model operations
  * Inherits all functionality from Session including insertTablet
  * which handles both TreeTablet and TableTablet formats
+ *
+ * Overrides executeNonQueryStatement to track database context changes
+ * similar to Java Session implementation
  */
 export class TableSession extends Session {
-  // Inherits insertTablet from Session
-  // No need to override - Session.insertTablet handles both tree and table models
+  private currentDatabase?: string;
+
+  /**
+   * Execute non-query statement with database context tracking
+   * Similar to Java Session implementation:
+   * - Tracks database changes from USE statements
+   * - Logs warnings for context switches (simplified version)
+   *
+   * @param sql - SQL statement to execute
+   */
+  async executeNonQueryStatement(sql: string): Promise<void> {
+    const previousDatabase = this.currentDatabase;
+
+    // Execute the statement using parent implementation
+    await super.executeNonQueryStatement(sql);
+
+    // Track database context changes from USE statements
+    // IoTDB database names can include letters, digits, underscores, dots, and hyphens
+    const usePattern = /^\s*USE\s+([a-zA-Z0-9_.-]+)\s*;?\s*$/i;
+    const match = sql.match(usePattern);
+    if (match) {
+      this.currentDatabase = match[1];
+      logger.debug(
+        `Database context changed from ${previousDatabase || "none"} to ${this.currentDatabase}`,
+      );
+    }
+  }
 }
 
-export type { TableTablet, ColumnCategory } from './Session';
+export type { TableTablet, ColumnCategory } from "./Session";

@@ -42,8 +42,6 @@ export class Connection {
         throw new Error("Host and port are required for connection");
       }
 
-      logger.debug(`Connecting to ${this.config.host}:${this.config.port}`);
-
       const options: any = {
         transport: thrift.TFramedTransport,
         protocol: thrift.TBinaryProtocol,
@@ -85,22 +83,13 @@ export class Connection {
         this.isConnected = false;
       });
 
-      // Unref the underlying socket to allow process exit
-      // This prevents the connection from keeping the process alive
-      if (this.connection && (this.connection as any).connection) {
-        const socket = (this.connection as any).connection;
-        if (socket && typeof socket.unref === "function") {
-          socket.unref();
-          logger.debug("Socket unref'd to allow process exit");
-        }
-      }
+      // Do not unref the socket; keep the process alive for pending responses
 
       this.client = thrift.createClient(IClientRPCService, this.connection);
 
       await this.openSession();
       await this.requestStatementId();
       this.isConnected = true;
-      logger.info("Connected successfully");
     } catch (error) {
       logger.error("Failed to connect:", error);
       throw error;
@@ -109,12 +98,20 @@ export class Connection {
 
   private async openSession(): Promise<void> {
     const configuration: Record<string, string> = {};
-    
+
     // Add sql_dialect to configuration if specified
     if (this.config.sqlDialect) {
-      configuration['sql_dialect'] = this.config.sqlDialect;
+      configuration["sql_dialect"] = this.config.sqlDialect;
+    } else {
+      logger.warn(
+        "No sql_dialect specified, IoTDB will use default (tree model)",
+      );
     }
-    
+
+    logger.debug(
+      `Opening session with configuration: ${JSON.stringify(configuration)}`,
+    );
+
     const openReq = new ttypes.TSOpenSessionReq({
       client_protocol: ttypes.TSProtocolVersion.IOTDB_SERVICE_PROTOCOL_V3,
       username: this.config.username || "root",
@@ -124,21 +121,30 @@ export class Connection {
     });
 
     return new Promise((resolve, reject) => {
+      // Add timeout for openSession call
+      const timeout = setTimeout(() => {
+        reject(new Error("openSession timeout after 30 seconds"));
+      }, 30000);
+
       this.client.openSession(openReq, (err: Error, response: any) => {
+        clearTimeout(timeout);
+
         if (err) {
+          logger.error(`openSession error: ${err.message}`);
           reject(err);
           return;
         }
 
         if (response.status.code !== 200) {
-          reject(
-            new Error(response.status.message || "Failed to open session"),
+          const errorMsg = response.status.message || "Failed to open session";
+          logger.error(
+            `openSession failed with status ${response.status.code}: ${errorMsg}`,
           );
+          reject(new Error(errorMsg));
           return;
         }
 
         this.sessionId = response.sessionId;
-        logger.debug(`Session opened: ${this.sessionId}`);
         resolve();
       });
     });
@@ -150,16 +156,23 @@ export class Connection {
     }
 
     return new Promise((resolve, reject) => {
+      // Add timeout for requestStatementId call
+      const timeout = setTimeout(() => {
+        reject(new Error("requestStatementId timeout after 30 seconds"));
+      }, 30000);
+
       this.client.requestStatementId(
         this.sessionId,
         (err: Error, statementId: number) => {
+          clearTimeout(timeout);
+
           if (err) {
+            logger.error(`requestStatementId error: ${err.message}`);
             reject(err);
             return;
           }
 
           this.statementId = statementId;
-          logger.debug(`Statement ID requested: ${this.statementId}`);
           resolve();
         },
       );

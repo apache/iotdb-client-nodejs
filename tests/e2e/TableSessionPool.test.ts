@@ -53,6 +53,11 @@ describe("TableSessionPool E2E Tests", () => {
       console.warn(
         "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",
       );
+      try {
+        await pool.close();
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   }, 60000);
 
@@ -106,14 +111,14 @@ describe("TableSessionPool E2E Tests", () => {
     // Show tables from current database (test)
     const dataSet = await pool.executeQueryStatement("SHOW TABLES");
     expect(dataSet).toBeDefined();
-    
+
     let rowCount = 0;
     while (await dataSet.hasNext()) {
       dataSet.next();
       rowCount++;
     }
     await dataSet.close();
-    
+
     expect(rowCount).toBeGreaterThanOrEqual(2);
   });
 
@@ -123,7 +128,21 @@ describe("TableSessionPool E2E Tests", () => {
       return;
     }
 
+    const database = "test";
     const tableName = "testTable1";
+
+    // Ensure database exists and is in use
+    try {
+      await pool.executeNonQueryStatement(`CREATE DATABASE ${database}`);
+    } catch (e: any) {
+      // Ignore if already exists
+      if (!e.message?.includes("already")) {
+        throw e;
+      }
+    }
+
+    // Use test database for this session
+    await pool.executeNonQueryStatement(`USE ${database}`);
 
     // Create table
     await pool.executeNonQueryStatement(
@@ -139,7 +158,7 @@ describe("TableSessionPool E2E Tests", () => {
     // Insert data using tablet with explicit column categories
     // Each column's category determines its indexing and query behavior
     const tablet = {
-      tableName: tableName,
+      tableName: tableName, // Just use table name after USE database
       columnNames: [
         "region_id",
         "plant_id",
@@ -157,12 +176,12 @@ describe("TableSessionPool E2E Tests", () => {
         TSDataType.DOUBLE,
       ],
       columnCategories: [
-        ColumnCategory.ATTRIBUTE,  // region_id - metadata (not indexed)
-        ColumnCategory.ATTRIBUTE,  // plant_id - metadata (not indexed)
-        ColumnCategory.TAG,        // device_id - indexed tag for filtering
-        ColumnCategory.ATTRIBUTE,  // model - metadata (not indexed)
-        ColumnCategory.FIELD,      // temperature - measurement value
-        ColumnCategory.FIELD,      // humidity - measurement value
+        ColumnCategory.TAG, // region_id - indexed tag for filtering
+        ColumnCategory.TAG, // plant_id - indexed tag for filtering
+        ColumnCategory.TAG, // device_id - indexed tag for filtering
+        ColumnCategory.ATTRIBUTE, // model - metadata (not indexed)
+        ColumnCategory.FIELD, // temperature - measurement value
+        ColumnCategory.FIELD, // humidity - measurement value
       ],
       timestamps: [] as number[],
       values: [] as any[][],
@@ -181,14 +200,14 @@ describe("TableSessionPool E2E Tests", () => {
     );
 
     expect(dataSet).toBeDefined();
-    
+
     let rowCount = 0;
     while (await dataSet.hasNext()) {
       dataSet.next();
       rowCount++;
     }
     await dataSet.close();
-    
+
     expect(rowCount).toBeGreaterThan(0);
   });
 
@@ -201,14 +220,14 @@ describe("TableSessionPool E2E Tests", () => {
     // Show tables from current database (test)
     const dataSet = await pool.executeQueryStatement("SHOW TABLES");
     expect(dataSet).toBeDefined();
-    
+
     let rowCount = 0;
     while (await dataSet.hasNext()) {
       dataSet.next();
       rowCount++;
     }
     await dataSet.close();
-    
+
     expect(rowCount).toBeGreaterThan(0);
   });
 
@@ -219,6 +238,19 @@ describe("TableSessionPool E2E Tests", () => {
     }
 
     const tableName = "t1";
+
+    // Ensure database exists and is in use
+    try {
+      await pool.executeNonQueryStatement("CREATE DATABASE test");
+    } catch (e: any) {
+      // Ignore if already exists
+      if (!e.message?.includes("already")) {
+        throw e;
+      }
+    }
+
+    // Use test database for this session
+    await pool.executeNonQueryStatement("USE test");
 
     // Create table
     await pool.executeNonQueryStatement(
@@ -231,7 +263,7 @@ describe("TableSessionPool E2E Tests", () => {
       columnNames: ["t1", "f1"],
       columnTypes: [TSDataType.STRING, TSDataType.INT32],
       columnCategories: [
-        ColumnCategory.TAG,   // Tag column - indexed for efficient filtering in WHERE clauses
+        ColumnCategory.TAG, // Tag column - indexed for efficient filtering in WHERE clauses
         ColumnCategory.FIELD, // Field column - stores measurement/sensor values
       ],
       timestamps: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
@@ -253,18 +285,18 @@ describe("TableSessionPool E2E Tests", () => {
 
     // Query null count
     const dataSet = await pool.executeQueryStatement(
-      `SELECT COUNT(*) FROM ${tableName} WHERE f1 IS NULL`,
+      `SELECT COUNT(*) as f1 FROM ${tableName} WHERE f1 IS NULL`,
     );
 
     expect(dataSet).toBeDefined();
-    
+
     let count = 0;
     if (await dataSet.hasNext()) {
       const row = dataSet.next();
-      count = row[0];
+      count = row.getLongByIndex(0);
     }
     await dataSet.close();
-    
+
     // Should have 5 null values
     expect(count).toBe(5);
   });
@@ -299,7 +331,7 @@ describe("TableSessionPool E2E Tests", () => {
       const dataSet = await session.executeQueryStatement("SHOW DATABASES");
       expect(dataSet).toBeDefined();
       expect(dataSet.getColumnNames()).toBeDefined();
-      
+
       // Iterate through results
       while (await dataSet.hasNext()) {
         dataSet.next();
@@ -340,7 +372,7 @@ describe("TableSessionPool E2E Tests", () => {
       const dataSet =
         await stringNodeUrlsPool.executeQueryStatement("SHOW DATABASES");
       expect(dataSet).toBeDefined();
-      
+
       // Iterate through results
       while (await dataSet.hasNext()) {
         dataSet.next();

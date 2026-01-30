@@ -45,6 +45,11 @@ describe("SessionPool E2E Tests", () => {
       console.warn(
         "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",
       );
+      try {
+        await pool.close();
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   }, 60000);
 
@@ -79,14 +84,14 @@ describe("SessionPool E2E Tests", () => {
 
     expect(dataSet).toBeDefined();
     expect(dataSet.getColumnNames()).toBeDefined();
-    
+
     let rowCount = 0;
     while (await dataSet.hasNext()) {
       dataSet.next();
       rowCount++;
     }
     await dataSet.close();
-    
+
     expect(rowCount).toBeGreaterThan(0);
   });
 
@@ -124,7 +129,7 @@ describe("SessionPool E2E Tests", () => {
     const dataSets = await Promise.all(promises);
 
     expect(dataSets).toHaveLength(10);
-    
+
     // Close all datasets
     for (const dataSet of dataSets) {
       expect(dataSet).toBeDefined();

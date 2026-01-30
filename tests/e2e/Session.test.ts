@@ -43,6 +43,11 @@ describe("Session E2E Tests", () => {
       console.warn(
         "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",
       );
+      try {
+        await session.close();
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   }, 60000); // 30 second timeout for connection
 
@@ -109,14 +114,14 @@ describe("Session E2E Tests", () => {
     const dataSet = await session.executeQueryStatement(
       "SHOW TIMESERIES root.test.**",
     );
-    
+
     let rowCount = 0;
     while (await dataSet.hasNext()) {
       dataSet.next();
       rowCount++;
     }
     await dataSet.close();
-    
+
     expect(rowCount).toBeGreaterThanOrEqual(2);
   }, 60000);
 
@@ -131,14 +136,14 @@ describe("Session E2E Tests", () => {
     expect(dataSet).toBeDefined();
     expect(dataSet.getColumnNames()).toBeDefined();
     expect(Array.isArray(dataSet.getColumnNames())).toBe(true);
-    
+
     let rowCount = 0;
     while (await dataSet.hasNext()) {
       dataSet.next();
       rowCount++;
     }
     await dataSet.close();
-    
+
     expect(rowCount).toBeGreaterThan(0);
   }, 60000);
 
@@ -172,14 +177,14 @@ describe("Session E2E Tests", () => {
 
     expect(dataSet).toBeDefined();
     expect(dataSet.getColumnNames()).toBeDefined();
-    
+
     let rowCount = 0;
     while (await dataSet.hasNext()) {
       dataSet.next();
       rowCount++;
     }
     await dataSet.close();
-    
+
     expect(rowCount).toBeGreaterThan(0);
   }, 60000);
 });

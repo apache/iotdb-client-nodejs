@@ -116,12 +116,54 @@ function distributeSensorTypes(totalSensors, proportions) {
 }
 
 /**
+ * Generate shared batch templates (timestamps and values)
+ * These are reused across all devices to save memory
+ * @param {number} batchCount - Number of batches
+ * @param {number} batchSize - Rows per batch
+ * @param {number} sensorNumber - Number of sensors
+ * @param {Array} sensorTypes - Data types for each sensor
+ * @param {number} pointStep - Time interval between points
+ * @param {Object} config - Configuration object
+ * @returns {Array} Array of batch templates
+ */
+function generateSharedBatches(batchCount, batchSize, sensorNumber, sensorTypes, pointStep, config) {
+  const batches = [];
+  
+  for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
+    const timestamps = [];
+    const values = Array(batchSize).fill(null).map(() => []);
+
+    // Base timestamp (will be updated during actual test)
+    const baseTimestamp = 0;
+
+    for (let rowIdx = 0; rowIdx < batchSize; rowIdx++) {
+      timestamps.push(baseTimestamp + rowIdx * pointStep);
+      
+      // Generate values for each sensor
+      for (let sensorIdx = 0; sensorIdx < sensorNumber; sensorIdx++) {
+        const value = generateValue(sensorTypes[sensorIdx], config);
+        values[rowIdx].push(value);
+      }
+    }
+
+    batches.push({
+      timestamps,
+      values,
+    });
+  }
+  
+  return batches;
+}
+
+/**
  * Generate test data for tree model
+ * Uses shared batch templates to minimize memory usage
  * @param {Object} config - Configuration object
  * @returns {Object} Generated data structure
  */
 function generateTreeModelData(config) {
   console.log('Generating tree model test data...');
+  console.log('  Using memory-optimized shared batch approach');
   
   const { 
     DEVICE_NUMBER, 
@@ -152,6 +194,19 @@ function generateTreeModelData(config) {
   // Distribute sensor types
   const sensorTypes = distributeSensorTypes(SENSOR_NUMBER, INSERT_DATATYPE_PROPORTION);
 
+  // Generate shared batch templates ONCE (memory optimization)
+  console.log(`  Generating ${batchCount} shared batch template(s)...`);
+  const sharedBatches = generateSharedBatches(
+    batchCount, 
+    BATCH_SIZE_PER_WRITE, 
+    SENSOR_NUMBER, 
+    sensorTypes, 
+    POINT_STEP, 
+    config
+  );
+
+  // Generate device metadata (without duplicating batch data)
+  console.log(`  Generating metadata for ${DEVICE_NUMBER} devices...`);
   for (let deviceIdx = 0; deviceIdx < DEVICE_NUMBER; deviceIdx++) {
     const deviceId = `${STORAGE_GROUP_PREFIX}.${DEVICE_PREFIX}${deviceIdx}`;
     const measurements = [];
@@ -163,47 +218,21 @@ function generateTreeModelData(config) {
       dataTypes.push(sensorTypes[sensorIdx]);
     }
 
-    // Generate data batches
-    const batches = [];
-    for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
-      const batchSize = LOOP !== null ? BATCH_SIZE_PER_WRITE : Math.min(
-        BATCH_SIZE_PER_WRITE,
-        Math.floor(TOTAL_DATA_POINTS / DEVICE_NUMBER) - batchIdx * BATCH_SIZE_PER_WRITE
-      );
-
-      const timestamps = [];
-      const values = Array(batchSize).fill(null).map(() => []);
-
-      // Base timestamp (will be updated during actual test)
-      const baseTimestamp = 0;
-
-      for (let rowIdx = 0; rowIdx < batchSize; rowIdx++) {
-        timestamps.push(baseTimestamp + rowIdx * POINT_STEP);
-        
-        // Generate values for each sensor
-        for (let sensorIdx = 0; sensorIdx < SENSOR_NUMBER; sensorIdx++) {
-          const value = generateValue(dataTypes[sensorIdx], config);
-          values[rowIdx].push(value);
-        }
-      }
-
-      batches.push({
-        timestamps,
-        values,
-      });
-    }
-
+    // Store device metadata only (batches are shared)
     devices.push({
       deviceId,
       measurements,
       dataTypes,
-      batches,
+      // Reference to shared batches (will be resolved during benchmark execution)
+      batchCount,
     });
 
-    if ((deviceIdx + 1) % 10 === 0 || deviceIdx === DEVICE_NUMBER - 1) {
-      console.log(`  Generated data for ${deviceIdx + 1}/${DEVICE_NUMBER} devices`);
+    if ((deviceIdx + 1) % 1000 === 0 || deviceIdx === DEVICE_NUMBER - 1) {
+      console.log(`  Generated metadata for ${deviceIdx + 1}/${DEVICE_NUMBER} devices`);
     }
   }
+
+  console.log(`  Memory optimization: ${DEVICE_NUMBER} devices share ${batchCount} batch template(s)`);
 
   return {
     model: 'tree',
@@ -215,17 +244,21 @@ function generateTreeModelData(config) {
       POINT_STEP,
       LOOP,
     },
+    // Shared batches used by all devices
+    sharedBatches,
     devices,
   };
 }
 
 /**
  * Generate test data for table model
+ * Uses shared batch templates to minimize memory usage
  * @param {Object} config - Configuration object
  * @returns {Object} Generated data structure
  */
 function generateTableModelData(config) {
   console.log('Generating table model test data...');
+  console.log('  Using memory-optimized shared batch approach');
   
   const { 
     DEVICE_NUMBER, 
@@ -255,6 +288,19 @@ function generateTableModelData(config) {
   // Distribute sensor types
   const sensorTypes = distributeSensorTypes(SENSOR_NUMBER, INSERT_DATATYPE_PROPORTION);
 
+  // Generate shared batch templates ONCE (memory optimization)
+  console.log(`  Generating ${batchCount} shared batch template(s)...`);
+  const sharedBatches = generateSharedBatches(
+    batchCount, 
+    BATCH_SIZE_PER_WRITE, 
+    SENSOR_NUMBER, 
+    sensorTypes, 
+    POINT_STEP, 
+    config
+  );
+
+  // Generate device metadata (without duplicating batch data)
+  console.log(`  Generating metadata for ${DEVICE_NUMBER} devices...`);
   for (let deviceIdx = 0; deviceIdx < DEVICE_NUMBER; deviceIdx++) {
     const deviceId = `device_${deviceIdx}`;
     const measurements = [];
@@ -266,47 +312,21 @@ function generateTableModelData(config) {
       dataTypes.push(sensorTypes[sensorIdx]);
     }
 
-    // Generate data batches
-    const batches = [];
-    for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
-      const batchSize = LOOP !== null ? BATCH_SIZE_PER_WRITE : Math.min(
-        BATCH_SIZE_PER_WRITE,
-        Math.floor(TOTAL_DATA_POINTS / DEVICE_NUMBER) - batchIdx * BATCH_SIZE_PER_WRITE
-      );
-
-      const timestamps = [];
-      const values = Array(batchSize).fill(null).map(() => []);
-
-      // Base timestamp (will be updated during actual test)
-      const baseTimestamp = 0;
-
-      for (let rowIdx = 0; rowIdx < batchSize; rowIdx++) {
-        timestamps.push(baseTimestamp + rowIdx * POINT_STEP);
-        
-        // Generate values for each sensor
-        for (let sensorIdx = 0; sensorIdx < SENSOR_NUMBER; sensorIdx++) {
-          const value = generateValue(dataTypes[sensorIdx], config);
-          values[rowIdx].push(value);
-        }
-      }
-
-      batches.push({
-        timestamps,
-        values,
-      });
-    }
-
+    // Store device metadata only (batches are shared)
     devices.push({
       deviceId,
       measurements,
       dataTypes,
-      batches,
+      // Reference to shared batches (will be resolved during benchmark execution)
+      batchCount,
     });
 
-    if ((deviceIdx + 1) % 10 === 0 || deviceIdx === DEVICE_NUMBER - 1) {
-      console.log(`  Generated data for ${deviceIdx + 1}/${DEVICE_NUMBER} devices`);
+    if ((deviceIdx + 1) % 1000 === 0 || deviceIdx === DEVICE_NUMBER - 1) {
+      console.log(`  Generated metadata for ${deviceIdx + 1}/${DEVICE_NUMBER} devices`);
     }
   }
+
+  console.log(`  Memory optimization: ${DEVICE_NUMBER} devices share ${batchCount} batch template(s)`);
 
   return {
     model: 'table',
@@ -320,6 +340,8 @@ function generateTableModelData(config) {
       POINT_STEP,
       LOOP,
     },
+    // Shared batches used by all devices
+    sharedBatches,
     devices,
   };
 }

@@ -86,6 +86,11 @@ describe("Multi-Node E2E Tests", () => {
         "Could not connect to IoTDB. Multi-node E2E tests will be skipped.",
       );
       console.warn("Error:", error);
+      await Promise.allSettled([
+        pool1?.close(),
+        pool2?.close(),
+        pool3?.close(),
+      ]);
     }
   }, 60000);
 
@@ -151,7 +156,7 @@ describe("Multi-Node E2E Tests", () => {
         throw error;
       }
     }
-    
+
     try {
       await pool1.executeNonQueryStatement(
         "CREATE TIMESERIES root.test.device1.humidity WITH DATATYPE=FLOAT",
@@ -346,7 +351,7 @@ describe("Multi-Node E2E Tests", () => {
     const dataSets = await Promise.all(promises);
 
     // Close all SessionDataSets in parallel (much faster)
-    await Promise.all(dataSets.map(ds => ds.close()));
+    await Promise.all(dataSets.map((ds) => ds.close()));
 
     // Pools should maintain their sizes
     expect(pool1.getPoolSize()).toBeGreaterThanOrEqual(initialSize1);
@@ -367,7 +372,11 @@ describe("Multi-Node E2E Tests", () => {
       measurements: ["temperature", "humidity"],
       dataTypes: [TSDataType.FLOAT, TSDataType.FLOAT],
       timestamps: [Date.now(), Date.now() + 1000, Date.now() + 2000],
-      values: [[20.0, 60.0], [21.0, 61.0], [22.0, 62.0]],
+      values: [
+        [20.0, 60.0],
+        [21.0, 61.0],
+        [22.0, 62.0],
+      ],
     });
 
     // Brief delay for data availability (optimized from 500ms to 100ms)
@@ -443,7 +452,8 @@ describe("Multi-Node E2E Tests", () => {
       expect(nodeUrlsPool.getPoolSize()).toBeGreaterThanOrEqual(3);
 
       // Execute a query to verify it works
-      const dataSet = await nodeUrlsPool.executeQueryStatement("SHOW DATABASES");
+      const dataSet =
+        await nodeUrlsPool.executeQueryStatement("SHOW DATABASES");
       expect(dataSet.getColumnNames()).toBeDefined();
       await dataSet.close();
 
@@ -477,7 +487,8 @@ describe("Multi-Node E2E Tests", () => {
       expect(nodeUrlsPool.getPoolSize()).toBeGreaterThanOrEqual(3);
 
       // Execute a query to verify it works
-      const dataSet = await nodeUrlsPool.executeQueryStatement("SHOW DATABASES");
+      const dataSet =
+        await nodeUrlsPool.executeQueryStatement("SHOW DATABASES");
       expect(dataSet.getColumnNames()).toBeDefined();
       await dataSet.close();
 

@@ -377,6 +377,29 @@ const result = await tablePool.executeQueryStatement('SHOW DATABASES');
 await tablePool.close();
 ```
 
+### Redirection Support (Experimental - Not Yet Implemented)
+
+**⚠️ Status: Foundation Only - Runtime Integration Pending**
+
+The client includes foundational infrastructure for client-side redirection support, but the actual runtime integration is not yet implemented. The following classes are available for future use:
+
+- `RedirectException`: Exception class for handling redirect responses
+- `RedirectCache`: LRU cache with TTL for device-to-endpoint mappings
+
+**Why Not Implemented?**
+- Requires real IoTDB multi-node cluster for testing and validation
+- Java client uses status code **400** (not 531 as initially assumed)
+- Complex multi-device and batch operation support needed
+- Edge cases (redirect loops, connection failures) need thorough testing
+
+**Current Behavior:**
+All write operations use standard round-robin load balancing across configured nodes.
+
+**Future Implementation:**
+See [docs/redirection-design.md](docs/redirection-design.md) for detailed design and implementation plan.
+
+**Note**: The foundation classes (RedirectException, RedirectCache) are well-tested with unit tests. Configuration options will be added when runtime integration is complete.
+
 ## API Reference
 
 ### Configuration Builders

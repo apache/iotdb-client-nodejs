@@ -45,6 +45,11 @@ describe("Large Query E2E Tests", () => {
       console.warn(
         "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",
       );
+      try {
+        await session.close();
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   }, 60000);
 

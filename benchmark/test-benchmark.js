@@ -37,13 +37,13 @@ async function testTreeModel() {
   const testData = await prepareTestData(config, 'tree');
   console.log(`✓ Test data generated: ${testData.devices.length} devices`);
   console.log(`  - Measurements per device: ${testData.devices[0].measurements.length}`);
-  console.log(`  - Batches per device: ${testData.devices[0].batches.length}`);
-  console.log(`  - Rows per batch: ${testData.devices[0].batches[0].timestamps.length}`);
+  console.log(`  - Shared batches: ${testData.sharedBatches.length}`);
+  console.log(`  - Rows per batch: ${testData.sharedBatches[0].timestamps.length}`);
   
   // Test workload generation
   let workloadCount = 0;
   for (const device of testData.devices) {
-    workloadCount += device.batches.length;
+    workloadCount += device.batchCount;
   }
   console.log(`✓ Workload: ${workloadCount} operations total`);
   
@@ -87,13 +87,13 @@ async function testTableModel() {
   const testData = await prepareTestData(config, 'table');
   console.log(`✓ Test data generated: ${testData.devices.length} devices`);
   console.log(`  - Measurements per device: ${testData.devices[0].measurements.length}`);
-  console.log(`  - Batches per device: ${testData.devices[0].batches.length}`);
-  console.log(`  - Rows per batch: ${testData.devices[0].batches[0].timestamps.length}`);
+  console.log(`  - Shared batches: ${testData.sharedBatches.length}`);
+  console.log(`  - Rows per batch: ${testData.sharedBatches[0].timestamps.length}`);
   
   // Test workload generation
   let workloadCount = 0;
   for (const device of testData.devices) {
-    workloadCount += device.batches.length;
+    workloadCount += device.batchCount;
   }
   console.log(`✓ Workload: ${workloadCount} operations total`);
   

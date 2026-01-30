@@ -25,6 +25,7 @@ import {
   EndPoint,
 } from "../utils/Config";
 import { logger } from "../utils/Logger";
+import { registerClosable, unregisterClosable } from "../utils/ProcessCleanup";
 import { SessionDataSet } from "./SessionDataSet";
 import { RowRecord } from "./RowRecord";
 import { BaseColumnDecoder, ColumnEncoding, Column } from "./ColumnDecoder";
@@ -46,15 +47,15 @@ export { SessionDataSet, RowRecord };
 /**
  * Column category for table model
  * Matches C# and Java IoTDB client definitions
- * 
+ *
  * Note: TIME is reserved for internal use. When specifying columnCategories in TableTablet,
  * only use TAG, FIELD, and ATTRIBUTE. Timestamps are handled separately via the timestamps array.
  */
 export enum ColumnCategory {
-  TAG = 0,        // Tag column - indexed for WHERE clause filtering (e.g., device_id, region_id)
-  FIELD = 1,      // Field column - measurement values (e.g., temperature, humidity)
-  ATTRIBUTE = 2,  // Attribute column - metadata not indexed (e.g., model, firmware_version)
-  TIME = 3,       // Time column (reserved for internal use, do not use in columnCategories)
+  TAG = 0, // Tag column - indexed for WHERE clause filtering (e.g., device_id, region_id)
+  FIELD = 1, // Field column - measurement values (e.g., temperature, humidity)
+  ATTRIBUTE = 2, // Attribute column - metadata not indexed (e.g., model, firmware_version)
+  TIME = 3, // Time column (reserved for internal use, do not use in columnCategories)
 }
 
 /**
@@ -109,7 +110,7 @@ export class TreeTablet implements ITreeTablet {
   addRow(timestamp: number, values: any[]): void {
     if (values.length !== this.measurements.length) {
       throw new Error(
-        `Values array length (${values.length}) does not match measurements length (${this.measurements.length})`
+        `Values array length (${values.length}) does not match measurements length (${this.measurements.length})`,
       );
     }
     this.timestamps.push(timestamp);
@@ -133,11 +134,14 @@ export class TableTablet implements ITableTablet {
     tableName: string,
     columnNames: string[],
     columnTypes: number[],
-    columnCategories: ColumnCategory[]
+    columnCategories: ColumnCategory[],
   ) {
-    if (columnNames.length !== columnTypes.length || columnNames.length !== columnCategories.length) {
+    if (
+      columnNames.length !== columnTypes.length ||
+      columnNames.length !== columnCategories.length
+    ) {
       throw new Error(
-        'columnNames, columnTypes, and columnCategories must have the same length'
+        "columnNames, columnTypes, and columnCategories must have the same length",
       );
     }
     this.tableName = tableName;
@@ -156,7 +160,7 @@ export class TableTablet implements ITableTablet {
   addRow(timestamp: number, values: any[]): void {
     if (values.length !== this.columnNames.length) {
       throw new Error(
-        `Values array length (${values.length}) does not match columnNames length (${this.columnNames.length})`
+        `Values array length (${values.length}) does not match columnNames length (${this.columnNames.length})`,
       );
     }
     this.timestamps.push(timestamp);
@@ -213,6 +217,7 @@ export class Session {
     }
 
     this.connection = new Connection(this.config);
+    registerClosable(this);
   }
 
   async open(): Promise<void> {
@@ -221,6 +226,7 @@ export class Session {
 
   async close(): Promise<void> {
     await this.connection.close();
+    unregisterClosable(this);
   }
 
   /**
@@ -368,10 +374,14 @@ export class Session {
    * Insert tablet (supports both tree and table models)
    * @param tablet TreeTablet for tree model or TableTablet for table model
    */
-  async insertTablet(tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet): Promise<void> {
+  async insertTablet(
+    tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet,
+  ): Promise<void> {
     // Check if it's a TableTablet
-    if ('tableName' in tablet) {
-      return this.insertTableTabletInternal(tablet as TableTablet | ITableTablet);
+    if ("tableName" in tablet) {
+      return this.insertTableTabletInternal(
+        tablet as TableTablet | ITableTablet,
+      );
     } else {
       return this.insertTreeTabletInternal(tablet as TreeTablet | ITreeTablet);
     }
@@ -380,7 +390,9 @@ export class Session {
   /**
    * Internal method to insert tree model tablet
    */
-  private async insertTreeTabletInternal(tablet: TreeTablet | ITreeTablet): Promise<void> {
+  private async insertTreeTabletInternal(
+    tablet: TreeTablet | ITreeTablet,
+  ): Promise<void> {
     logger.debug(`Inserting tree tablet for device: ${tablet.deviceId}`);
 
     const client = this.connection.getClient();
@@ -422,6 +434,19 @@ export class Session {
           return;
         }
 
+        // Handle redirection recommendation (code 400)
+        // Note: Code 400 means write succeeded but server recommends a better endpoint for future operations
+        if (response.code === 400) {
+          logger.warn(`Server recommends redirection (code 400). Write succeeded but future operations may benefit from using a different endpoint.`);
+          if (response.redirectNode) {
+            logger.warn(`Recommended endpoint: ${response.redirectNode.ip || response.redirectNode.internalIp}:${response.redirectNode.port}`);
+          }
+          logger.warn(`Client-side redirection is not yet implemented. See docs/redirection-design.md for future implementation plans.`);
+          // Resolve successfully since the write operation completed
+          resolve();
+          return;
+        }
+
         if (response.code !== 200) {
           reject(new Error(response.message || "Insert tablet failed"));
           return;
@@ -435,7 +460,9 @@ export class Session {
   /**
    * Internal method to insert table model tablet
    */
-  private async insertTableTabletInternal(tablet: TableTablet | ITableTablet): Promise<void> {
+  private async insertTableTabletInternal(
+    tablet: TableTablet | ITableTablet,
+  ): Promise<void> {
     logger.debug(`Inserting table tablet for table: ${tablet.tableName}`);
 
     const client = this.connection.getClient();
@@ -455,24 +482,25 @@ export class Session {
       timestampBuffer.writeBigInt64BE(ts, i * 8);
     });
 
-    // For table model, extract measurements (non-TIME columns)
-    const measurements: string[] = [];
-    const measurementTypes: number[] = [];
-    
-    tablet.columnNames.forEach((name, i) => {
-      const category = tablet.columnCategories[i];
-      // Include TAG, FIELD, and ATTRIBUTE columns
-      // Exclude TIME column as it's handled separately
-      if (category !== ColumnCategory.TIME) {
-        measurements.push(name);
-        measurementTypes.push(tablet.columnTypes[i]);
-      }
+    // For table model, use database.tableName format for prefixPath
+    // If tableName already contains database (e.g., "test.table1"), use as-is
+    // Otherwise, we need to get current database context
+    const prefixPath = tablet.tableName;
+
+    logger.debug(
+      `Table insert: prefixPath=${prefixPath}, columns=${tablet.columnNames.length}, rows=${tablet.timestamps.length}`,
+    );
+
+    // Convert columnCategories to signed bytes for Thrift
+    const columnCategoriesBytes = tablet.columnCategories.map((category) => {
+      // Convert unsigned to signed byte (-128 to 127)
+      return category < 128 ? category : category - 256;
     });
 
     const req = new ttypes.TSInsertTabletReq({
       sessionId: sessionId,
-      prefixPath: tablet.tableName,
-      measurements: measurements,
+      prefixPath: prefixPath,
+      measurements: tablet.columnNames,
       values: this.serializeTabletValues(
         tablet.values,
         tablet.columnTypes,
@@ -482,6 +510,8 @@ export class Session {
       types: tablet.columnTypes,
       size: tablet.timestamps.length,
       isAligned: false,
+      writeToTable: true, // CRITICAL: Tell IoTDB this is table model data
+      columnCategories: columnCategoriesBytes, // Pass column categories for table model
     });
 
     return new Promise((resolve, reject) => {
@@ -491,8 +521,24 @@ export class Session {
           return;
         }
 
+        // Handle redirection recommendation (code 400)
+        // Note: Code 400 means write succeeded but server recommends a better endpoint for future operations
+        if (response.code === 400) {
+          logger.warn(`Server recommends redirection for table ${tablet.tableName} (code 400). Write succeeded but future operations may benefit from using a different endpoint.`);
+          if (response.redirectNode) {
+            logger.warn(`Recommended endpoint: ${response.redirectNode.ip || response.redirectNode.internalIp}:${response.redirectNode.port}`);
+          }
+          logger.warn(`Client-side redirection is not yet implemented. See docs/redirection-design.md for future implementation plans.`);
+          // Resolve successfully since the write operation completed
+          resolve();
+          return;
+        }
+
         if (response.code !== 200) {
-          reject(new Error(response.message || "Insert table tablet failed"));
+          const errorMsg = response.message || "Insert table tablet failed";
+          logger.error(`Insert table tablet failed: code=${response.code}, message=${response.message}`);
+          logger.error(`Request details: prefixPath=${prefixPath}, columns=${tablet.columnNames.length}, rows=${tablet.timestamps.length}`);
+          reject(new Error(`${errorMsg} (code: ${response.code})`));
           return;
         }
 
@@ -589,30 +635,50 @@ export class Session {
       case 5: // TEXT
       case 11: {
         // STRING (similar to TEXT)
-        const strBuffers = values.map((v) => {
+        // Optimized: Pre-calculate total size to avoid multiple Buffer.concat calls
+
+        // Phase 1: Convert all values to buffers and calculate total size
+        const strData: Buffer[] = [];
+        let totalSize = 0;
+
+        for (const v of values) {
           const str = v === null || v === undefined ? "" : String(v);
           const strBytes = Buffer.from(str, "utf8");
-          const len = Buffer.alloc(4);
-          len.writeInt32BE(strBytes.length); // Write byte length in big-endian (Java standard)
-          return Buffer.concat([len, strBytes]);
-        });
-        return Buffer.concat(strBuffers);
+          strData.push(strBytes);
+          totalSize += 4 + strBytes.length; // 4 bytes for length + string bytes
+        }
+
+        // Phase 2: Allocate single buffer and copy data
+        const result = Buffer.allocUnsafe(totalSize);
+        let offset = 0;
+
+        for (const strBytes of strData) {
+          // Write length (4 bytes, big-endian)
+          result.writeInt32BE(strBytes.length, offset);
+          offset += 4;
+
+          // Copy string bytes
+          strBytes.copy(result, offset);
+          offset += strBytes.length;
+        }
+
+        return result;
       }
       case 8: {
-        // TIMESTAMP (stored as INT64 - milliseconds)
-        return Buffer.from(
-          new BigInt64Array(
-            values.map((v) => {
-              if (v === null || v === undefined) {
-                return BigInt(0);
-              }
-              if (v instanceof Date) {
-                return BigInt(v.getTime());
-              }
-              return BigInt(v);
-            }),
-          ).buffer,
-        );
+        // TIMESTAMP (stored as INT64 - milliseconds) - Use big-endian for consistency
+        const buffer = Buffer.alloc(values.length * 8);
+        values.forEach((v, i) => {
+          let timestamp = BigInt(0);
+          if (v !== null && v !== undefined) {
+            if (v instanceof Date) {
+              timestamp = BigInt(v.getTime());
+            } else {
+              timestamp = BigInt(v);
+            }
+          }
+          buffer.writeBigInt64BE(timestamp, i * 8);
+        });
+        return buffer;
       }
       case 9: {
         // DATE (stored as INT32 - days since epoch) - Use big-endian
@@ -632,48 +698,114 @@ export class Session {
       }
       case 10: {
         // BLOB
-        const blobBuffers = values.map((v) => {
+        // Optimized: Pre-calculate total size to avoid multiple Buffer.concat calls
+
+        // Phase 1: Convert all values to buffers and calculate total size
+        const blobData: Buffer[] = [];
+        let totalSize = 0;
+
+        for (const v of values) {
           const blob =
             v === null || v === undefined
               ? Buffer.alloc(0)
               : Buffer.isBuffer(v)
                 ? v
                 : Buffer.from(v);
-          const len = Buffer.alloc(4);
-          len.writeInt32BE(blob.length); // Write byte length in big-endian (Java standard)
-          return Buffer.concat([len, blob]);
-        });
-        return Buffer.concat(blobBuffers);
+          blobData.push(blob);
+          totalSize += 4 + blob.length; // 4 bytes for length + blob bytes
+        }
+
+        // Phase 2: Allocate single buffer and copy data
+        const result = Buffer.allocUnsafe(totalSize);
+        let offset = 0;
+
+        for (const blob of blobData) {
+          // Write length (4 bytes, big-endian)
+          result.writeInt32BE(blob.length, offset);
+          offset += 4;
+
+          // Copy blob bytes
+          blob.copy(result, offset);
+          offset += blob.length;
+        }
+
+        return result;
       }
       default:
         throw new Error(`Unsupported data type: ${dataType}`);
     }
   }
 
+  /**
+   * Serialize BitMap for null value indicators.
+   *
+   * BitMap Serialization Format (compatible with Apache IoTDB Java client):
+   *
+   * For each column:
+   *   1. columnHasNull flag (1 byte): 0=no nulls, 1=has nulls
+   *   2. If has nulls: bitmap array
+   *      - 8 values packed per byte (LSB-first bit ordering)
+   *      - Bit=1 means NULL, Bit=0 means NOT NULL
+   *      - Size = Math.ceil(rowCount / 8) bytes
+   *      - Padding: Remaining bits in last byte are set to 0
+   *
+   * Example 1: rowCount=10, nulls at indices [1, 4, 6, 9]
+   *   Row indices:     0  1  2  3  4  5  6  7  | 8  9  (6 padding bits)
+   *   Null values:     0  1  0  0  1  0  1  0  | 0  1  0  0  0  0  0  0
+   *   Bit positions:   0  1  2  3  4  5  6  7  | 0  1  2  3  4  5  6  7
+   *   Binary (LSB):    01001010                 |    01000000
+   *   Hex:             0x52                     |    0x02
+   *
+   * Example 2: rowCount=13, nulls at indices [0, 3, 8, 10]
+   *   Byte 1: indices 0-7  → binary 00001001 → 0x09
+   *   Byte 2: indices 8-12 → binary 00000101 → 0x05
+   *
+   * Bit Ordering Details (LSB-first):
+   *   - Row index 0 maps to bit 0 (LSB) = 1 << 0 = 0x01
+   *   - Row index 1 maps to bit 1       = 1 << 1 = 0x02
+   *   - Row index 2 maps to bit 2       = 1 << 2 = 0x04
+   *   - Row index 3 maps to bit 3       = 1 << 3 = 0x08
+   *   - ...
+   *   - Row index 7 maps to bit 7 (MSB) = 1 << 7 = 0x80
+   *
+   * This format is compatible with:
+   * - Java: org.apache.iotdb.session.tablet.Tablet.writeBitMaps()
+   * - C++: Session::getValue() with BitMap serialization
+   * - Python: Tablet.get_binary_values() with struct.pack
+   *
+   * @param bitMaps - Array of boolean arrays (or null) for each column, true=null, false=not null
+   * @param rowCount - Number of rows in the tablet
+   * @returns Serialized bitmap buffer
+   */
   protected serializeBitMaps(
     bitMaps: (boolean[] | null)[],
     rowCount: number,
   ): Buffer {
-    // Serialize bitmap information for null values
-    // Format: for each column, one byte indicating if column has null, followed by bitmap bytes if it does
     const buffers: Buffer[] = [];
 
     for (const bitMap of bitMaps) {
       const columnHasNull = bitMap !== null;
-      // Write one byte: 1 if column has null, 0 if not
+
+      // Write columnHasNull flag (1 byte): 1 if column has nulls, 0 if not
       buffers.push(Buffer.from([columnHasNull ? 1 : 0]));
 
       if (columnHasNull && bitMap) {
-        // Calculate number of bytes needed for bitmap (1 bit per row)
-        // Use Math.ceil to properly round up only when needed
+        // Calculate number of bytes needed for bitmap (1 bit per row, 8 rows per byte)
+        // Example: 10 rows → Math.ceil(10/8) = 2 bytes
         const bitmapByteCount = Math.ceil(rowCount / 8);
         const bitmapBytes = Buffer.alloc(bitmapByteCount);
 
-        // Set bits in bitmap (1 = null, 0 = not null)
+        // Pack null indicators into bits (LSB-first ordering)
+        // Bit=1 means NULL, Bit=0 means NOT NULL
         for (let i = 0; i < bitMap.length; i++) {
           if (bitMap[i]) {
-            const byteIndex = Math.floor(i / 8);
-            const bitIndex = i % 8;
+            const byteIndex = Math.floor(i / 8); // Which byte in the bitmap
+            const bitIndex = i % 8; // Which bit in the byte (0-7)
+
+            // Set bit using LSB-first ordering: 1 << bitIndex
+            // Row 0 → bit 0 (LSB) = 1 << 0 = 0x01
+            // Row 1 → bit 1       = 1 << 1 = 0x02
+            // Row 7 → bit 7 (MSB) = 1 << 7 = 0x80
             bitmapBytes[byteIndex] |= 1 << bitIndex;
           }
         }

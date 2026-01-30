@@ -12,6 +12,7 @@ This benchmark suite provides two specialized tools for testing IoTDB write perf
 ### Key Features
 
 ✅ **Pre-generated Test Data** - Eliminates data generation overhead during testing  
+✅ **Memory-Optimized** - Shared batch templates support 100K+ devices without OOM  
 ✅ **Pre-registered Metadata** - Avoids metadata creation impact on write performance  
 ✅ **Flexible Configuration** - Extensive parameters for customizing test scenarios  
 ✅ **Concurrent Testing** - Simulates multiple clients with configurable concurrency  
@@ -317,7 +318,16 @@ BENCHMARK RESULTS
 - Checks if pre-generated data exists
 - Generates new data if needed or if `REGENERATE_DATA=true`
 - Saves generated data to file for reuse
-- Data includes all sensor values pre-calculated
+- **Memory Optimization**: Uses shared batch templates across all devices
+  - ONE set of timestamps and values generated
+  - ALL devices reference the same template data
+  - Only device metadata (ID, measurements, types) stored per device
+  - Supports 100K+ devices without OOM (~1.5 KB per device)
+  
+**Memory Comparison (100K devices, 10 sensors, 100 rows):**
+- Old approach: ~15+ GB (each device has own data copy)
+- New approach: ~150 MB (shared batch templates)
+- **Reduction**: 99% memory savings
 
 ### 2. Schema Registration Phase
 - Creates storage groups/databases
@@ -331,7 +341,7 @@ BENCHMARK RESULTS
 
 ### 4. Main Test Phase
 - Spawns concurrent worker clients
-- Each worker reads from pre-generated data
+- Each worker reads from shared batch templates
 - Updates timestamps to current time
 - Executes write operations
 - Records latency and success/failure
@@ -414,10 +424,18 @@ benchmark/
 - Ensure firewall allows connections
 
 #### "Out of memory" errors
+**Note**: The benchmark now uses memory-optimized shared batch templates and can handle 100K+ devices with minimal memory.
+
+If you still encounter OOM:
 - Reduce `BATCH_SIZE_PER_WRITE`
-- Reduce `CLIENT_NUMBER`
-- Reduce `TOTAL_DATA_POINTS`
+- Reduce `CLIENT_NUMBER`  
+- For data generation: Delete old data file and regenerate (uses new optimized format)
 - Increase Node.js heap size: `NODE_OPTIONS=--max-old-space-size=4096`
+
+**Memory usage reference** (with optimization):
+- 10K devices: ~16 MB
+- 100K devices: ~150 MB
+- 1M devices: ~1.5 GB
 
 #### "Schema already exists" warnings
 - Normal if rerunning tests

@@ -38,6 +38,11 @@ describe("SessionDataSet E2E Tests", () => {
       await session.open();
     } catch (error) {
       console.warn("Could not connect to IoTDB. Tests will be skipped.");
+      try {
+        await session.close();
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   }, 60000);
 
@@ -182,7 +187,10 @@ describe("SessionDataSet E2E Tests", () => {
     const row = dataSet.next();
 
     // Access by column name (fully qualified)
-    expect(row.getFloat("root.test.column.d1.temperature")).toBeCloseTo(23.5, 1);
+    expect(row.getFloat("root.test.column.d1.temperature")).toBeCloseTo(
+      23.5,
+      1,
+    );
     expect(row.getDouble("root.test.column.d1.humidity")).toBeCloseTo(65.2, 1);
 
     // Access by index

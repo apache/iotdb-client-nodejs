@@ -17,7 +17,14 @@
  * under the License.
  */
 
-import { Session, QueryResult, TreeTablet, TableTablet, ITreeTablet, ITableTablet, SessionDataSet } from "./Session";
+import {
+  Session,
+  TreeTablet,
+  TableTablet,
+  ITreeTablet,
+  ITableTablet,
+  SessionDataSet,
+} from "./Session";
 import {
   PoolConfig,
   DEFAULT_POOL_CONFIG,
@@ -25,6 +32,7 @@ import {
   parseNodeUrls,
 } from "../utils/Config";
 import { logger } from "../utils/Logger";
+import { registerClosable, unregisterClosable } from "../utils/ProcessCleanup";
 
 interface PooledSession {
   session: Session;
@@ -90,6 +98,8 @@ export abstract class BaseSessionPool {
     logger.info(
       `${this.getPoolName()} created with ${this.endPoints.length} endpoints, max pool size: ${this.config.maxPoolSize}`,
     );
+
+    registerClosable(this);
   }
 
   /**
@@ -106,7 +116,16 @@ export abstract class BaseSessionPool {
     // Create minimum pool size connections
     const minSize = this.config.minPoolSize || 1;
     for (let i = 0; i < minSize; i++) {
-      await this.createSession();
+      try {
+        await this.createSession();
+      } catch (error: any) {
+        const errorMsg = `Failed to create session ${i + 1}/${minSize}: ${error.message}`;
+        logger.error(errorMsg);
+        if (error.stack) {
+          logger.error(`Stack trace: ${error.stack}`);
+        }
+        throw new Error(errorMsg);
+      }
     }
 
     // Start cleanup interval with proper async handling
@@ -245,15 +264,15 @@ export abstract class BaseSessionPool {
     timeoutMs: number = 60000,
   ): Promise<SessionDataSet> {
     const session = await this.getSession();
-    
+
     try {
       const dataSet = await session.executeQueryStatement(sql, timeoutMs);
-      
+
       // Set cleanup callback to release session when dataset is closed
       dataSet.setCleanupCallback(() => {
         this.releaseSession(session);
       });
-      
+
       return dataSet;
     } catch (error) {
       // If query fails, release session immediately
@@ -275,7 +294,9 @@ export abstract class BaseSessionPool {
    * Insert tablet (supports both tree and table models)
    * @param tablet TreeTablet for tree model or TableTablet for table model
    */
-  async insertTablet(tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet): Promise<void> {
+  async insertTablet(
+    tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet,
+  ): Promise<void> {
     const session = await this.getSession();
     try {
       return await session.insertTablet(tablet);
@@ -303,6 +324,7 @@ export abstract class BaseSessionPool {
 
     this.pool = [];
     this.waitQueue = [];
+    unregisterClosable(this);
     logger.info(`${this.getPoolName()} closed`);
   }
 
