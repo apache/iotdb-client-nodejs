@@ -17,21 +17,16 @@
  * under the License.
  */
 
-export { Session, TreeTablet, TableTablet } from "./client/Session";
-export type { QueryResult, Tablet, ITreeTablet, ITableTablet } from "./client/Session";
-export { ColumnCategory } from "./client/Session";
-export { TableSession } from "./client/TableSession";
-export { SessionDataSet } from "./client/SessionDataSet";
-export { RowRecord } from "./client/RowRecord";
-export { SessionPool } from "./client/SessionPool";
-export { TableSessionPool } from "./client/TableSessionPool";
-export type { Config, PoolConfig, SSLOptions, EndPoint } from "./utils/Config";
-export {
-  DEFAULT_CONFIG,
-  DEFAULT_POOL_CONFIG,
-  ConfigBuilder,
-  PoolConfigBuilder,
-  parseNodeUrls,
-} from "./utils/Config";
-export { logger, LogLevel } from "./utils/Logger";
-export { TSDataType, getDataTypeName } from "./utils/DataTypes";
+import { Session } from './Session';
+
+/**
+ * TableSession extends Session for table model operations
+ * Inherits all functionality from Session including insertTablet
+ * which handles both TreeTablet and TableTablet formats
+ */
+export class TableSession extends Session {
+  // Inherits insertTablet from Session
+  // No need to override - Session.insertTablet handles both tree and table models
+}
+
+export type { TableTablet, ColumnCategory } from './Session';

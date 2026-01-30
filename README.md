@@ -1,18 +1,44 @@
 # Apache IoTDB Node.js Client
 
 [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+[![npm version](https://img.shields.io/npm/v/iotdb-client-nodejs.svg)](https://www.npmjs.com/package/iotdb-client-nodejs)
+[![Node.js Version](https://img.shields.io/node/v/iotdb-client-nodejs.svg)](https://nodejs.org/)
 
 A Node.js client for Apache IoTDB with support for SessionPool and TableSessionPool, providing efficient connection management and comprehensive query capabilities.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Technical Architecture](#technical-architecture)
+- [API Reference](#api-reference)
+- [Development](#development)
+- [Testing](#testing)
+- [Performance Testing](#performance-testing)
+- [Examples](#examples)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [Release Process](#release-process)
+- [License](#license)
+
+## Overview
+
+The Apache IoTDB Node.js Client is a high-performance, feature-rich client library for interacting with Apache IoTDB, a time-series database designed for IoT data management. This client provides both tree model (timeseries) and table model (relational) APIs, enabling flexible data management strategies.
 
 ## Features
 
 - **Session Management**: Single session with query, non-query, and insertTablet operations
-- **SessionPool**: Connection pooling for high-concurrency scenarios
-- **TableSessionPool**: Specialized pool for table model operations
-- **Multi-Node Support**: Round-robin load balancing across multiple IoTDB nodes
-- **SSL/TLS Support**: Secure connections with customizable SSL options
-- **TypeScript Support**: Full TypeScript definitions included
-- **Comprehensive Testing**: Unit and E2E tests included
+- **SessionPool**: Connection pooling for high-concurrency scenarios with automatic load balancing
+- **TableSessionPool**: Specialized pool for table model operations with database context management
+- **Multi-Node Support**: Round-robin load balancing across multiple IoTDB nodes with failover
+- **SSL/TLS Support**: Secure connections with customizable SSL options and certificate validation
+- **TypeScript Support**: Full TypeScript definitions with strict type checking
+- **Builder Pattern**: Fluent API for elegant configuration management
+- **Memory Efficient**: SessionDataSet with lazy loading and pagination for large result sets
+- **Comprehensive Testing**: Unit tests, E2E tests, and benchmark tools included
+- **Production Ready**: Connection pooling, idle cleanup, health checks, and error handling
 
 ## Installation
 
@@ -61,7 +87,8 @@ console.log('All rows:', allRows);
 const customDataSet = await session.executeQueryStatement('SELECT * FROM root.test.**', 30000);
 // ... iterate and close
 
-// Insert tablet data
+// Insert tablet data (supports both tree and table models)
+// Tree model example:
 await session.insertTablet({
   deviceId: 'root.test.device1',
   measurements: ['temperature', 'humidity'],
@@ -535,6 +562,108 @@ interface PoolConfig extends Config {
 
 #### Tablet
 ```typescript
+#### TreeTablet (Tree Model / Timeseries Model)
+
+**Interface (for plain objects):**
+```typescript
+interface ITreeTablet {
+  deviceId: string;           // Full path like "root.test.device1"
+  measurements: string[];     // Sensor names
+  dataTypes: number[];        // TSDataType for each measurement
+  timestamps: number[];       // Array of timestamps
+  values: any[][];           // 2D array: [rows][columns]
+}
+```
+
+**Class (with helper methods):**
+```typescript
+import { TreeTablet, TSDataType } from 'iotdb-client-nodejs';
+
+// Create a tablet
+const tablet = new TreeTablet(
+  'root.test.device1',
+  ['temperature', 'humidity'],
+  [TSDataType.FLOAT, TSDataType.DOUBLE]
+);
+
+// Add rows one at a time using addRow method
+tablet.addRow(Date.now(), [25.5, 60.0]);
+tablet.addRow(Date.now() + 1000, [26.0, 61.5]);
+tablet.addRow(Date.now() + 2000, [26.5, 62.0]);
+
+// Insert the tablet
+await session.insertTablet(tablet);
+```
+
+**Alternative: Plain object approach (still supported)**
+```typescript
+await session.insertTablet({
+  deviceId: 'root.test.device1',
+  measurements: ['temperature', 'humidity'],
+  dataTypes: [TSDataType.FLOAT, TSDataType.DOUBLE],
+  timestamps: [Date.now(), Date.now() + 1000],
+  values: [[25.5, 60.0], [26.0, 61.5]],
+});
+```
+
+#### TableTablet (Table Model / Relational Model)
+
+**Interface (for plain objects):**
+```typescript
+interface ITableTablet {
+  tableName: string;          // Table name
+  columnNames: string[];      // Column names (excluding timestamp)
+  columnTypes: number[];      // TSDataType for each column
+  columnCategories: ColumnCategory[];  // Category for each column
+  timestamps: number[];       // Array of timestamps
+  values: any[][];           // 2D array: [rows][columns]
+}
+
+enum ColumnCategory {
+  TAG = 0,         // Tag column - indexed for WHERE clause filtering
+  FIELD = 1,       // Field column - measurement values
+  ATTRIBUTE = 2,   // Attribute column - metadata not indexed
+  TIME = 3,        // Time column (reserved for internal use, do not use in columnCategories)
+}
+```
+
+**Class (with helper methods):**
+```typescript
+import { TableTablet, ColumnCategory, TSDataType } from 'iotdb-client-nodejs';
+
+// Create a tablet
+const tablet = new TableTablet(
+  'sensor_data',
+  ['device_id', 'temperature', 'humidity'],
+  [TSDataType.TEXT, TSDataType.FLOAT, TSDataType.DOUBLE],
+  [ColumnCategory.TAG, ColumnCategory.FIELD, ColumnCategory.FIELD]
+);
+
+// Add rows one at a time using addRow method
+tablet.addRow(Date.now(), ['device_001', 25.5, 60.0]);
+tablet.addRow(Date.now() + 1000, ['device_002', 26.0, 61.5]);
+tablet.addRow(Date.now() + 2000, ['device_003', 26.5, 62.0]);
+
+// Insert the tablet
+await pool.insertTablet(tablet);
+```
+
+**Alternative: Plain object approach (still supported)**
+```typescript
+await pool.insertTablet({
+  tableName: 'sensor_data',
+  columnNames: ['device_id', 'temperature', 'humidity'],
+  columnTypes: [TSDataType.TEXT, TSDataType.FLOAT, TSDataType.DOUBLE],
+  columnCategories: [ColumnCategory.TAG, ColumnCategory.FIELD, ColumnCategory.FIELD],
+  timestamps: [Date.now(), Date.now() + 1000],
+  values: [['device_001', 25.5, 60.0], ['device_002', 26.0, 61.5]],
+});
+```
+
+**Note:** TIME is reserved for internal use. When specifying columnCategories in TableTablet, only use TAG, FIELD, and ATTRIBUTE. Timestamps are handled separately via the timestamps array.
+
+#### Deprecated Tablet (for backward compatibility)
+```typescript
 interface Tablet {
   deviceId: string;
   measurements: string[];
@@ -542,6 +671,8 @@ interface Tablet {
   timestamps: number[];
   values: any[][];
 }
+// Note: Use TreeTablet instead
+```
 ```
 
 #### QueryResult
@@ -657,35 +788,515 @@ try {
 }
 ```
 
+## Technical Architecture
+
+### Overview
+
+The IoTDB Node.js client follows a three-layer architecture design, optimized for both single-session and high-concurrency scenarios:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Application Layer (Your Code)                      │
+└─────────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────────┐
+│  Pool Layer                                         │
+│  ┌──────────────────┐    ┌──────────────────────┐  │
+│  │  SessionPool     │    │ TableSessionPool     │  │
+│  │  - Load Balance  │    │ - Database Context   │  │
+│  │  - Pool Mgmt     │    │ - Pool Mgmt          │  │
+│  └──────────────────┘    └──────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────────┐
+│  Session Layer                                      │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  Session                                     │  │
+│  │  - Query / Non-Query                         │  │
+│  │  - InsertTablet                              │  │
+│  │  - Result Parsing                            │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────────┐
+│  Connection Layer                                   │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  Connection (Thrift)                         │  │
+│  │  - TCP/SSL Transport                         │  │
+│  │  - Session Lifecycle                         │  │
+│  │  - Low-level Protocol                        │  │
+│  └──────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+                    ↓
+              Apache IoTDB
+```
+
+### Core Components
+
+#### 1. Connection Layer (`src/connection/Connection.ts`)
+- Manages low-level Thrift connections over TCP or SSL/TLS
+- Handles session lifecycle (open/close with sessionId/statementId)
+- Implements TFramedTransport and TBinaryProtocol
+- Supports single endpoint connections
+- **Key Pattern**: One connection = one IoTDB node endpoint
+
+#### 2. Session Layer (`src/client/Session.ts`)
+- High-level API for database operations
+- Methods: `executeQueryStatement()`, `executeNonQueryStatement()`, `insertTablet()`
+- Handles query result parsing with SessionDataSet
+- Supports pagination with configurable fetchSize
+- **Key Pattern**: Uses first node from nodeUrls for single-session scenarios
+
+#### 3. Pool Layer (`src/client/BaseSessionPool.ts`, `SessionPool.ts`, `TableSessionPool.ts`)
+- Connection pooling with configurable min/max sizes
+- Round-robin load balancing across multiple endpoints
+- Automatic idle connection cleanup (maxIdleTime)
+- Wait queue when pool exhausted (waitTimeout)
+- Health checks and connection recycling
+- **Key Pattern**: Distributes connections across all nodes in nodeUrls
+
+#### 4. Configuration System (`src/utils/Config.ts`)
+- Builder pattern for fluent configuration
+- Support for both old (host/port) and new (nodeUrls) formats
+
+#### 5. Tablet Type System
+
+The client provides distinct tablet types for tree and table models:
+
+**TreeTablet** (Timeseries Model):
+- `deviceId`: Full path (e.g., "root.sg.device")
+- `measurements`: Sensor names
+- `dataTypes`: Type for each measurement
+- `timestamps` and `values`: Time-series data
+
+**TableTablet** (Relational Model):
+- `tableName`: Table name (not a path)
+- `columnNames`: All columns including tags, time, fields, attributes
+- `columnTypes`: Type for each column
+- `columnCategories`: Category (TAG, TIME, FIELD, ATTRIBUTE) for each column
+- `timestamps` and `values`: Includes tag values in data
+
+**Polymorphic insertTablet():**
+Both `Session` and `TableSession` use the same method name with runtime type dispatch:
+```typescript
+// Works with TreeTablet
+await session.insertTablet({ deviceId: '...', measurements: [...], ...});
+
+// Works with TableTablet
+await tableSession.insertTablet({ tableName: '...', columnNames: [...], ...});
+```
+- Type-safe with TypeScript interfaces
+- Validation and default values
+
+### Data Flow
+
+#### Query Execution Flow
+```
+1. Application calls pool.executeQueryStatement()
+2. Pool acquires available Session (round-robin)
+3. Session sends query via Connection to IoTDB
+4. IoTDB returns SessionDataSet with queryId
+5. SessionDataSet fetches data in batches (fetchSize)
+6. Application iterates results with hasNext()/next()
+7. Session released back to pool
+8. SessionDataSet.close() releases server resources
+```
+
+#### Insert Flow
+```
+1. Application calls pool.insertTablet()
+2. Pool acquires available Session (round-robin)
+3. Session serializes Tablet data by column
+4. Data sent via Connection to IoTDB
+5. IoTDB acknowledges write
+6. Session released back to pool
+```
+
+### Thread Safety & Concurrency
+
+- **Sessions**: Not thread-safe; use SessionPool for concurrency
+- **SessionPool**: Thread-safe; internal locking for session management
+- **Connection Lifecycle**: Managed automatically by pool
+- **Load Balancing**: Round-robin assignment on session acquisition
+- **Idle Cleanup**: Background task removes idle connections
+
+### Thrift Integration
+
+The client uses Apache Thrift for RPC communication:
+
+- **Generated Code**: `src/thrift/generated/` from IoTDB's `.thrift` files
+- **Protocol**: TBinaryProtocol (compact, efficient)
+- **Transport**: TFramedTransport (message boundaries)
+- **SSL Support**: Configurable TLS transport layer
+- **Version**: Compatible with Apache IoTDB 1.0+
+
+### Memory Management
+
+- **SessionDataSet**: Lazy loading with pagination (default: 1024 rows/fetch)
+- **Connection Pool**: Bounded size prevents resource exhaustion
+- **Idle Cleanup**: Automatic connection cleanup after maxIdleTime
+- **Result Sets**: Must call `close()` to release server resources
+
+### Error Handling
+
+- **Connection Errors**: Automatic retry with next node in pool
+- **Timeout Handling**: Configurable query timeouts (default: 60s)
+- **Pool Exhaustion**: Wait queue with timeout
+- **Thrift Errors**: Wrapped in JavaScript errors with stack traces
+
+### Configuration Patterns
+
+#### Constructor Overloading
+SessionPool/TableSessionPool support two constructor signatures:
+
+```typescript
+// New format (recommended):
+new SessionPool({ nodeUrls: ["host1:6667", "host2:6667"] });
+
+// Old format (backward compatible):
+new SessionPool(["host1", "host2"], 6667, { /* options */ });
+```
+
+#### Builder Pattern
+```typescript
+const session = new Session(
+  new ConfigBuilder()
+    .host('localhost')
+    .port(6667)
+    .fetchSize(2048)
+    .build()
+);
+```
+
 ## Development
 
-### Build
+### Prerequisites
 
+- Node.js >= 14.0.0
+- npm >= 6.0.0
+- Apache Thrift compiler (optional, for regenerating Thrift files)
+- Git
+
+### Development Setup
+
+1. Clone the repository:
+```bash
+git clone https://github.com/CritasWang/iotdb-client-nodejs.git
+cd iotdb-client-nodejs
+```
+
+2. Install dependencies:
 ```bash
 npm install
+```
+
+3. Build the project:
+```bash
 npm run build
 ```
 
-### Run Tests
+### Build System
 
+The project uses a two-step build process:
+
+1. **esbuild**: Fast TypeScript compilation
+   - Configured in `esbuild.config.js`
+   - Compiles `src/` to `dist/` directory
+   - Excludes type declaration files
+
+2. **tsc**: Type declaration generation
+   - Generates `.d.ts` files for TypeScript support
+   - Run with `--emitDeclarationOnly` flag
+   - Ensures type safety for consumers
+
+3. **copy:thrift**: Copy generated Thrift files
+   - Copies `.js` files from `src/thrift/generated/` to `dist/thrift/generated/`
+   - Required because Thrift code uses `require()` statements
+
+Build commands:
 ```bash
-# Run all tests
+npm run build          # Complete build (esbuild + tsc + copy)
+npm run build:esbuild  # Only esbuild compilation
+npm run build:types    # Only type declarations
+```
+
+### Development Workflow
+
+1. **Make changes** in `src/` directory
+2. **Build** with `npm run build`
+3. **Test** with `npm test`
+4. **Lint** with `npm run lint`
+5. **Format** with `npm run format`
+
+### Code Style
+
+- Use TypeScript strict mode
+- Follow existing code formatting (Prettier)
+- Add JSDoc comments for public APIs
+- Keep functions focused and concise
+- Use async/await instead of callbacks
+- Handle errors appropriately
+- Prefer explicit types over `any`
+
+### Regenerating Thrift Files
+
+If you need to update to a newer version of IoTDB's Thrift definitions:
+
+1. Download the latest Thrift files from Apache IoTDB:
+```bash
+git clone --depth 1 https://github.com/apache/iotdb.git /tmp/iotdb
+```
+
+2. Copy the Thrift files:
+```bash
+cp /tmp/iotdb/iotdb-protocol/thrift-datanode/src/main/thrift/client.thrift thrift/
+cp /tmp/iotdb/iotdb-protocol/thrift-commons/src/main/thrift/common.thrift thrift/
+```
+
+3. Regenerate the Node.js client:
+```bash
+npm run generate:thrift
+```
+
+4. Test thoroughly to ensure compatibility
+
+## Testing
+
+### Test Structure
+
+```
+tests/
+├── unit/           # Unit tests (fast, no external dependencies)
+│   ├── Config.test.ts
+│   ├── Logger.test.ts
+│   └── ...
+└── e2e/            # End-to-end tests (require IoTDB)
+    ├── Session.test.ts
+    ├── SessionPool.test.ts
+    ├── TableSessionPool.test.ts
+    └── ...
+```
+
+### Running Tests
+
+Run all tests:
+```bash
 npm test
+```
 
-# Run unit tests only
+Run only unit tests:
+```bash
 npm run test:unit
+```
 
-# Run E2E tests (requires IoTDB instance)
+Run only E2E tests (requires IoTDB instance):
+```bash
 export IOTDB_HOST=localhost
 export IOTDB_PORT=6667
+export IOTDB_USER=root
+export IOTDB_PASSWORD=root
 npm run test:e2e
 ```
 
-### Linting
+### E2E Test Setup
+
+E2E tests require a running IoTDB instance. You can use Docker Compose:
+
+**Single Node (1c1d):**
+```bash
+docker-compose -f docker-compose-1c1d.yml up -d
+```
+
+**3-Node Cluster (3c3d):**
+```bash
+docker-compose -f docker-compose-3c3d.yml up -d
+```
+
+**Stop containers:**
+```bash
+docker-compose -f docker-compose-1c1d.yml down
+```
+
+### Test Patterns
+
+#### Unit Test Example
+```typescript
+describe('ConfigBuilder', () => {
+  test('should build config with all options', () => {
+    const config = new ConfigBuilder()
+      .host('localhost')
+      .port(6667)
+      .username('root')
+      .password('root')
+      .build();
+    
+    expect(config.host).toBe('localhost');
+    expect(config.port).toBe(6667);
+  });
+});
+```
+
+#### E2E Test Example
+```typescript
+describe('Session E2E Tests', () => {
+  let session: Session;
+
+  beforeAll(async () => {
+    session = new Session({
+      host: process.env.IOTDB_HOST || 'localhost',
+      port: parseInt(process.env.IOTDB_PORT || '6667'),
+      username: process.env.IOTDB_USER || 'root',
+      password: process.env.IOTDB_PASSWORD || 'root',
+    });
+    await session.open();
+  }, 60000); // 60s timeout for connection
+
+  afterAll(async () => {
+    if (session?.isOpen()) {
+      await session.close();
+    }
+  });
+
+  test('should execute query', async () => {
+    if (!session.isOpen()) return; // Skip if no connection
+    
+    const dataSet = await session.executeQueryStatement('SHOW DATABASES');
+    const rows = await dataSet.toArray();
+    expect(Array.isArray(rows)).toBe(true);
+    await dataSet.close();
+  });
+});
+```
+
+### Test Coverage
+
+Current test coverage:
+- Unit tests: Core utilities (Config, Logger, data serialization)
+- E2E tests: Session, SessionPool, TableSessionPool
+- All data types tested simultaneously
+- Multi-node scenarios tested
+- Pool behavior tested (size limits, timeouts, cleanup)
+
+### Debugging Tests
+
+Debug single test:
+```bash
+npm run test:debug
+```
+
+Debug E2E tests:
+```bash
+npm run test:e2e:debug
+```
+
+Check for open handles:
+```bash
+npm run test:e2e:check-handles
+```
+
+## Performance Testing
+
+Comprehensive benchmark tools are available in the `benchmark/` directory for performance testing and optimization.
+
+### Overview
+
+- **Tree Model Benchmark**: Tests timeseries data model using `insertTablet` API
+- **Table Model Benchmark**: Tests relational data model using `insertTablet` API
+- **Pre-generated Data**: Eliminates data generation overhead during testing
+- **Concurrent Clients**: Simulates real-world high-concurrency scenarios
+- **Detailed Metrics**: Throughput, latency, percentiles (P50, P90, P95, P99)
+
+### Quick Start
+
+Test benchmark infrastructure (no IoTDB required):
+```bash
+node benchmark/test-benchmark.js
+```
+
+Run tree model benchmark:
+```bash
+CLIENT_NUMBER=10 DEVICE_NUMBER=100 node benchmark/benchmark-tree.js
+```
+
+Run table model benchmark:
+```bash
+CLIENT_NUMBER=10 DEVICE_NUMBER=100 node benchmark/benchmark-table.js
+```
+
+### Key Configuration Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `CLIENT_NUMBER` | 10 | Number of concurrent clients |
+| `DEVICE_NUMBER` | 100 | Number of devices to simulate |
+| `SENSOR_NUMBER` | 10 | Number of sensors per device |
+| `BATCH_SIZE_PER_WRITE` | 100 | Data rows per write operation |
+| `TOTAL_DATA_POINTS` | 100000 | Total data points to generate |
+| `POOL_MAX_SIZE` | 20 | Maximum connections in pool |
+
+### Example: High Concurrency Test
 
 ```bash
-npm run lint
+CLIENT_NUMBER=50 \
+DEVICE_NUMBER=1000 \
+SENSOR_NUMBER=10 \
+BATCH_SIZE_PER_WRITE=1000 \
+TOTAL_DATA_POINTS=1000000 \
+node benchmark/benchmark-tree.js
 ```
+
+### Performance Metrics
+
+The benchmark reports:
+- **Execution Time**: Total test duration
+- **Operations**: Total, successful, failed, success rate
+- **Data Points**: Total points written
+- **Throughput**: Operations/sec, Points/sec
+- **Latency**: Min, Max, Average, P50, P90, P95, P99
+
+### Sample Output
+
+```
+================================================================================
+BENCHMARK RESULTS
+================================================================================
+
+[Execution Time]
+  Duration:              45.23s (45234ms)
+
+[Operations]
+  Total Operations:      1000
+  Successful:            998
+  Failed:                2
+  Success Rate:          99.80%
+
+[Data Points]
+  Total Points Written:  100,000
+
+[Throughput]
+  Operations/sec:        22.11
+  Points/sec:            2,210
+
+[Latency (ms)]
+  Min:                   15.23ms
+  Max:                   1250.45ms
+  Average:               45.23ms
+  P50 (Median):          42.15ms
+  P90:                   78.45ms
+  P95:                   95.23ms
+  P99:                   125.67ms
+================================================================================
+```
+
+### Performance Tuning Tips
+
+1. **Optimize Batch Size**: Test different values (100-1000 rows)
+2. **Adjust Concurrency**: Start with 10-20 clients, adjust based on results
+3. **Use Connection Pooling**: Set appropriate `POOL_MIN_SIZE` and `POOL_MAX_SIZE`
+4. **Pre-generate Data**: Use cached data for accurate results
+5. **Monitor Resources**: Watch CPU, memory, disk I/O, and network
+
+For complete documentation, see [benchmark/README.md](benchmark/README.md).
 
 ## Examples
 
@@ -701,35 +1312,234 @@ See the `examples/` directory for more usage examples:
 
 Comprehensive documentation is available in the [docs/](docs/) directory:
 
-### For Users
-- **[Implementation Guide](docs/implementation.md)** - Architecture and core components
+### User Guides
+
+- **[Tree Model User Guide](docs/user-guide-tree.md)** - Complete guide for timeseries data model
+- **[Table Model User Guide](docs/user-guide-table.md)** - Complete guide for relational data model
+- **[SessionDataSet Guide](docs/sessiondataset-guide.md)** - Working with query results
 - **[Data Types Reference](docs/data-types.md)** - Complete data type documentation
 - **[TypeScript Examples](docs/typescript-examples.md)** - TypeScript usage guide
+
+### Technical Documentation
+
+- **[Implementation Guide](docs/implementation.md)** - Architecture and core components
 - **[Thrift Documentation](docs/thrift.md)** - Thrift code generation
+- **[Build Infrastructure](docs/development/build-infrastructure.md)** - Build system details
 
 ### For Contributors
+
 - **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute
-- **[Build Infrastructure](docs/development/build-infrastructure.md)** - Build system details
 - **[Debugging E2E Tests](docs/development/debugging-e2e.md)** - Testing guide
 - **[Test Database Reference](docs/development/test-database.md)** - Test setup
 
 ### Additional Resources
+
 - **[Project Status](docs/project-status.md)** - Implementation status and roadmap
 - **[Changelog](CHANGELOG.md)** - Version history
 - **[GitHub Workflows](.github/workflows/README.md)** - CI/CD documentation
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions from the community! Whether you're fixing bugs, adding features, improving documentation, or reporting issues, your help is appreciated.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+### How to Contribute
+
+1. **Fork the repository** on GitHub
+2. **Create a feature branch** from `main`
+3. **Make your changes** following our code style guidelines
+4. **Add tests** for new functionality
+5. **Update documentation** as needed
+6. **Submit a pull request** with a clear description
+
+### Development Guidelines
+
+- Follow existing code style and conventions
+- Write clear, concise commit messages
+- Add unit tests for new features
+- Ensure all tests pass before submitting PR
+- Update CHANGELOG.md for notable changes
+- Keep PRs focused on a single feature or fix
+
+### Code Review Process
+
+All submissions require review before merging:
+1. Automated tests must pass (CI/CD)
+2. Code review by maintainers
+3. Documentation review (if applicable)
+4. Final approval and merge
+
+### Reporting Issues
+
+When reporting bugs, please include:
+- Node.js version
+- IoTDB version
+- Operating system
+- Steps to reproduce
+- Expected vs actual behavior
+- Error messages and stack traces
+
+For detailed contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Release Process
+
+This project follows semantic versioning (SemVer) and maintains a regular release cycle.
+
+### Version Numbering
+
+Given a version number `MAJOR.MINOR.PATCH`:
+- **MAJOR**: Breaking API changes
+- **MINOR**: New features, backward compatible
+- **PATCH**: Bug fixes, backward compatible
+
+### Release Workflow
+
+#### 1. Pre-release Preparation
+
+Update version and changelog:
+```bash
+# Update version in package.json
+npm version [major|minor|patch] --no-git-tag-version
+
+# Update CHANGELOG.md with release notes
+# - New features
+# - Bug fixes
+# - Breaking changes
+# - Deprecations
+```
+
+#### 2. Testing
+
+Run comprehensive tests:
+```bash
+# Unit tests
+npm run test:unit
+
+# E2E tests (requires IoTDB)
+export IOTDB_HOST=localhost
+export IOTDB_PORT=6667
+npm run test:e2e
+
+# Linting
+npm run lint
+
+# Build verification
+npm run build
+```
+
+#### 3. Version Tagging
+
+Create and push version tag:
+```bash
+# Commit version bump
+git add package.json CHANGELOG.md
+git commit -m "chore: bump version to X.Y.Z"
+
+# Create tag
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+
+# Push to remote
+git push origin main
+git push origin vX.Y.Z
+```
+
+#### 4. Publishing to npm
+
+Build and publish:
+```bash
+# Build production assets
+npm run build
+
+# Publish to npm (requires npm account)
+npm publish
+
+# For beta/RC releases
+npm publish --tag beta
+```
+
+#### 5. GitHub Release
+
+Create GitHub release:
+1. Go to GitHub Releases page
+2. Click "Create a new release"
+3. Select the version tag
+4. Add release title: `v X.Y.Z - Release Name`
+5. Copy changelog entries to release notes
+6. Attach build artifacts (if applicable)
+7. Publish release
+
+### Release Checklist
+
+- [ ] All tests passing
+- [ ] CHANGELOG.md updated
+- [ ] Version bumped in package.json
+- [ ] Documentation updated
+- [ ] Breaking changes documented
+- [ ] Migration guide (for major versions)
+- [ ] Git tag created
+- [ ] npm package published
+- [ ] GitHub release created
+- [ ] Release announcement (if major)
+
+### Release Schedule
+
+- **Patch releases**: As needed for critical bugs
+- **Minor releases**: Monthly or when features are ready
+- **Major releases**: When breaking changes are necessary
+
+### Beta/RC Releases
+
+For testing before stable release:
+
+```bash
+# Create beta version
+npm version 1.2.0-beta.1 --no-git-tag-version
+
+# Publish with beta tag
+npm publish --tag beta
+
+# Install beta version
+npm install iotdb-client-nodejs@beta
+```
+
+### Hotfix Process
+
+For critical production issues:
+
+1. Create hotfix branch from release tag
+2. Fix the issue
+3. Bump patch version
+4. Tag and publish immediately
+5. Merge back to main
+
+### Post-release Tasks
+
+- Update documentation site (if applicable)
+- Announce on project channels
+- Monitor for issues and feedback
+- Prepare next release milestone
 
 ## License
 
 Apache License 2.0
 
+Copyright © 2024 Apache IoTDB
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
 ## References
 
 - [Apache IoTDB](https://iotdb.apache.org/)
 - [Apache IoTDB GitHub](https://github.com/apache/iotdb)
+- [Apache IoTDB Documentation](https://iotdb.apache.org/UserGuide/Master/QuickStart/QuickStart.html)
 - [Apache IoTDB C# Client](https://github.com/apache/iotdb-client-csharp)
+- [Apache Thrift](https://thrift.apache.org/)

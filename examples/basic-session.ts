@@ -5,7 +5,7 @@
  * execute queries, and insert data. Shows both traditional and Builder pattern approaches.
  */
 
-import { Session, ConfigBuilder, TSDataType } from "../src";
+import { Session, ConfigBuilder, TSDataType, TreeTablet } from "../src";
 
 async function main() {
   console.log("=== Basic Session Example ===\n");
@@ -55,20 +55,35 @@ async function main() {
     );
     console.log("Timeseries created");
 
-    // Insert tablet data
-    console.log("\nInserting tablet data...");
+    // Insert tablet data using TreeTablet class with addRow method
+    console.log("\nInserting tree tablet data using addRow...");
+    const tablet = new TreeTablet(
+      "root.example.device1",
+      ["temperature", "humidity"],
+      [TSDataType.FLOAT, TSDataType.FLOAT]
+    );
+    
+    // Add rows one at a time - convenient for streaming data
+    tablet.addRow(Date.now(), [25.5, 60.0]);
+    tablet.addRow(Date.now() + 1000, [26.0, 61.5]);
+    tablet.addRow(Date.now() + 2000, [26.5, 62.0]);
+    
+    await session.insertTablet(tablet);
+    console.log("Tree tablet data inserted");
+    
+    // Alternative: Use plain object interface (still supported for backward compatibility)
+    console.log("\nInserting using plain object interface...");
     await session.insertTablet({
       deviceId: "root.example.device1",
       measurements: ["temperature", "humidity"],
       dataTypes: [TSDataType.FLOAT, TSDataType.FLOAT],
-      timestamps: [Date.now(), Date.now() + 1000, Date.now() + 2000],
+      timestamps: [Date.now() + 3000, Date.now() + 4000],
       values: [
-        [25.5, 60.0],
-        [26.0, 61.5],
-        [26.5, 62.0],
+        [27.0, 63.0],
+        [27.5, 64.0],
       ],
     });
-    console.log("Tablet data inserted");
+    console.log("Plain object data inserted");
 
     // Query data using SessionDataSet iterator pattern
     console.log("\nQuerying data...");

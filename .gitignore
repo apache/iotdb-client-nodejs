@@ -34,3 +34,7 @@ temp/
 
 # IoTDB data directories (created by docker-compose)
 iotdb/
+
+# Benchmark generated data files
+benchmark/benchmark_data*.json
+benchmark/*.log

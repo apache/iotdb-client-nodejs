@@ -19,6 +19,7 @@
 
 import { TableSessionPool } from "../../src/client/TableSessionPool";
 import { TSDataType } from "../../src/utils/DataTypes";
+import { ColumnCategory } from "../../src/client/Session";
 
 describe("TableSessionPool E2E Tests", () => {
   const IOTDB_HOST = process.env.IOTDB_HOST || "localhost";
@@ -135,10 +136,11 @@ describe("TableSessionPool E2E Tests", () => {
         "humidity DOUBLE FIELD)",
     );
 
-    // Insert data using tablet - simplified to 50 records
+    // Insert data using tablet with explicit column categories
+    // Each column's category determines its indexing and query behavior
     const tablet = {
-      deviceId: tableName,
-      measurements: [
+      tableName: tableName,
+      columnNames: [
         "region_id",
         "plant_id",
         "device_id",
@@ -146,13 +148,21 @@ describe("TableSessionPool E2E Tests", () => {
         "temperature",
         "humidity",
       ],
-      dataTypes: [
+      columnTypes: [
         TSDataType.STRING,
         TSDataType.STRING,
         TSDataType.STRING,
         TSDataType.STRING,
         TSDataType.FLOAT,
         TSDataType.DOUBLE,
+      ],
+      columnCategories: [
+        ColumnCategory.ATTRIBUTE,  // region_id - metadata (not indexed)
+        ColumnCategory.ATTRIBUTE,  // plant_id - metadata (not indexed)
+        ColumnCategory.TAG,        // device_id - indexed tag for filtering
+        ColumnCategory.ATTRIBUTE,  // model - metadata (not indexed)
+        ColumnCategory.FIELD,      // temperature - measurement value
+        ColumnCategory.FIELD,      // humidity - measurement value
       ],
       timestamps: [] as number[],
       values: [] as any[][],
@@ -215,11 +225,15 @@ describe("TableSessionPool E2E Tests", () => {
       `CREATE TABLE ${tableName}(t1 STRING TAG, f1 INT32 FIELD)`,
     );
 
-    // Insert data with some null values
+    // Insert data with explicit ColumnCategory enum showing best practices
     const tablet = {
-      deviceId: tableName,
-      measurements: ["t1", "f1"],
-      dataTypes: [TSDataType.STRING, TSDataType.INT32],
+      tableName: tableName,
+      columnNames: ["t1", "f1"],
+      columnTypes: [TSDataType.STRING, TSDataType.INT32],
+      columnCategories: [
+        ColumnCategory.TAG,   // Tag column - indexed for efficient filtering in WHERE clauses
+        ColumnCategory.FIELD, // Field column - stores measurement/sensor values
+      ],
       timestamps: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
       values: [
         ["t1", 100],

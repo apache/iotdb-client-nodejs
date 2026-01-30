@@ -43,6 +43,130 @@ export interface QueryResult {
 
 export { SessionDataSet, RowRecord };
 
+/**
+ * Column category for table model
+ * Matches C# and Java IoTDB client definitions
+ * 
+ * Note: TIME is reserved for internal use. When specifying columnCategories in TableTablet,
+ * only use TAG, FIELD, and ATTRIBUTE. Timestamps are handled separately via the timestamps array.
+ */
+export enum ColumnCategory {
+  TAG = 0,        // Tag column - indexed for WHERE clause filtering (e.g., device_id, region_id)
+  FIELD = 1,      // Field column - measurement values (e.g., temperature, humidity)
+  ATTRIBUTE = 2,  // Attribute column - metadata not indexed (e.g., model, firmware_version)
+  TIME = 3,       // Time column (reserved for internal use, do not use in columnCategories)
+}
+
+/**
+ * Tree model tablet interface - for timeseries model
+ * Uses deviceId as the full path (e.g., "root.sg.device")
+ */
+export interface ITreeTablet {
+  deviceId: string;
+  measurements: string[];
+  dataTypes: number[];
+  timestamps: number[];
+  values: any[][];
+}
+
+/**
+ * Table model tablet interface - for relational/table model
+ * Uses tableName and includes column categories
+ */
+export interface ITableTablet {
+  tableName: string;
+  columnNames: string[];
+  columnTypes: number[];
+  columnCategories: ColumnCategory[];
+  timestamps: number[];
+  values: any[][];
+}
+
+/**
+ * Tree model tablet class with helper methods
+ * Convenient for building tablets row-by-row
+ */
+export class TreeTablet implements ITreeTablet {
+  deviceId: string;
+  measurements: string[];
+  dataTypes: number[];
+  timestamps: number[];
+  values: any[][];
+
+  constructor(deviceId: string, measurements: string[], dataTypes: number[]) {
+    this.deviceId = deviceId;
+    this.measurements = measurements;
+    this.dataTypes = dataTypes;
+    this.timestamps = [];
+    this.values = [];
+  }
+
+  /**
+   * Add a row to the tablet
+   * @param timestamp - The timestamp for this row
+   * @param values - Array of values, must match the length of measurements
+   */
+  addRow(timestamp: number, values: any[]): void {
+    if (values.length !== this.measurements.length) {
+      throw new Error(
+        `Values array length (${values.length}) does not match measurements length (${this.measurements.length})`
+      );
+    }
+    this.timestamps.push(timestamp);
+    this.values.push(values);
+  }
+}
+
+/**
+ * Table model tablet class with helper methods
+ * Convenient for building tablets row-by-row
+ */
+export class TableTablet implements ITableTablet {
+  tableName: string;
+  columnNames: string[];
+  columnTypes: number[];
+  columnCategories: ColumnCategory[];
+  timestamps: number[];
+  values: any[][];
+
+  constructor(
+    tableName: string,
+    columnNames: string[],
+    columnTypes: number[],
+    columnCategories: ColumnCategory[]
+  ) {
+    if (columnNames.length !== columnTypes.length || columnNames.length !== columnCategories.length) {
+      throw new Error(
+        'columnNames, columnTypes, and columnCategories must have the same length'
+      );
+    }
+    this.tableName = tableName;
+    this.columnNames = columnNames;
+    this.columnTypes = columnTypes;
+    this.columnCategories = columnCategories;
+    this.timestamps = [];
+    this.values = [];
+  }
+
+  /**
+   * Add a row to the tablet
+   * @param timestamp - The timestamp for this row
+   * @param values - Array of values, must match the length of columnNames
+   */
+  addRow(timestamp: number, values: any[]): void {
+    if (values.length !== this.columnNames.length) {
+      throw new Error(
+        `Values array length (${values.length}) does not match columnNames length (${this.columnNames.length})`
+      );
+    }
+    this.timestamps.push(timestamp);
+    this.values.push(values);
+  }
+}
+
+/**
+ * @deprecated Use TreeTablet for tree model or TableTablet for table model instead
+ */
 export interface Tablet {
   deviceId: string;
   measurements: string[];
@@ -240,8 +364,24 @@ export class Session {
     });
   }
 
-  async insertTablet(tablet: Tablet): Promise<void> {
-    logger.debug(`Inserting tablet for device: ${tablet.deviceId}`);
+  /**
+   * Insert tablet (supports both tree and table models)
+   * @param tablet TreeTablet for tree model or TableTablet for table model
+   */
+  async insertTablet(tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet): Promise<void> {
+    // Check if it's a TableTablet
+    if ('tableName' in tablet) {
+      return this.insertTableTabletInternal(tablet as TableTablet | ITableTablet);
+    } else {
+      return this.insertTreeTabletInternal(tablet as TreeTablet | ITreeTablet);
+    }
+  }
+
+  /**
+   * Internal method to insert tree model tablet
+   */
+  private async insertTreeTabletInternal(tablet: TreeTablet | ITreeTablet): Promise<void> {
+    logger.debug(`Inserting tree tablet for device: ${tablet.deviceId}`);
 
     const client = this.connection.getClient();
     const sessionId = this.connection.getSessionId();
@@ -255,7 +395,6 @@ export class Session {
     });
 
     // Serialize timestamps in big-endian format (Java/network standard)
-    // IoTDB expects big-endian byte order for insertTablet operation
     const timestampBuffer = Buffer.alloc(bigIntTimestamps.length * 8);
     bigIntTimestamps.forEach((ts, i) => {
       timestampBuffer.writeBigInt64BE(ts, i * 8);
@@ -265,7 +404,11 @@ export class Session {
       sessionId: sessionId,
       prefixPath: tablet.deviceId,
       measurements: tablet.measurements,
-      values: this.serializeTabletValues(tablet),
+      values: this.serializeTabletValues(
+        tablet.values,
+        tablet.dataTypes,
+        tablet.timestamps.length,
+      ),
       timestamps: timestampBuffer,
       types: tablet.dataTypes,
       size: tablet.timestamps.length,
@@ -289,16 +432,89 @@ export class Session {
     });
   }
 
-  private serializeTabletValues(tablet: Tablet): Buffer {
+  /**
+   * Internal method to insert table model tablet
+   */
+  private async insertTableTabletInternal(tablet: TableTablet | ITableTablet): Promise<void> {
+    logger.debug(`Inserting table tablet for table: ${tablet.tableName}`);
+
+    const client = this.connection.getClient();
+    const sessionId = this.connection.getSessionId();
+
+    // Validate timestamps and convert to BigInt
+    const bigIntTimestamps = tablet.timestamps.map((t) => {
+      if (typeof t !== "number" || !Number.isFinite(t)) {
+        throw new Error(`Invalid timestamp: ${t}`);
+      }
+      return BigInt(Math.floor(t));
+    });
+
+    // Serialize timestamps in big-endian format
+    const timestampBuffer = Buffer.alloc(bigIntTimestamps.length * 8);
+    bigIntTimestamps.forEach((ts, i) => {
+      timestampBuffer.writeBigInt64BE(ts, i * 8);
+    });
+
+    // For table model, extract measurements (non-TIME columns)
+    const measurements: string[] = [];
+    const measurementTypes: number[] = [];
+    
+    tablet.columnNames.forEach((name, i) => {
+      const category = tablet.columnCategories[i];
+      // Include TAG, FIELD, and ATTRIBUTE columns
+      // Exclude TIME column as it's handled separately
+      if (category !== ColumnCategory.TIME) {
+        measurements.push(name);
+        measurementTypes.push(tablet.columnTypes[i]);
+      }
+    });
+
+    const req = new ttypes.TSInsertTabletReq({
+      sessionId: sessionId,
+      prefixPath: tablet.tableName,
+      measurements: measurements,
+      values: this.serializeTabletValues(
+        tablet.values,
+        tablet.columnTypes,
+        tablet.timestamps.length,
+      ),
+      timestamps: timestampBuffer,
+      types: tablet.columnTypes,
+      size: tablet.timestamps.length,
+      isAligned: false,
+    });
+
+    return new Promise((resolve, reject) => {
+      client.insertTablet(req, (err: Error, response: any) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        if (response.code !== 200) {
+          reject(new Error(response.message || "Insert table tablet failed"));
+          return;
+        }
+
+        resolve();
+      });
+    });
+  }
+
+  protected serializeTabletValues(
+    values: any[][],
+    dataTypes: number[],
+    rowCount: number,
+  ): Buffer {
     // Serialize tablet values based on data types
     // Format: all columns data, then bitmap for null values
     const buffers: Buffer[] = [];
     const bitMaps: (boolean[] | null)[] = [];
 
     // Serialize each column
-    for (let colIndex = 0; colIndex < tablet.measurements.length; colIndex++) {
-      const dataType = tablet.dataTypes[colIndex];
-      const columnValues = tablet.values.map((row) => row[colIndex]);
+    for (let colIndex = 0; colIndex < dataTypes.length; colIndex++) {
+      const dataType = dataTypes[colIndex];
+      const columnValues = values.map((row) => row[colIndex]);
 
       // Track null values for this column
       const nullBitmap: boolean[] = [];
@@ -320,16 +536,13 @@ export class Session {
     }
 
     // Append bitmap information
-    const bitmapBuffer = this.serializeBitMaps(
-      bitMaps,
-      tablet.timestamps.length,
-    );
+    const bitmapBuffer = this.serializeBitMaps(bitMaps, rowCount);
     buffers.push(bitmapBuffer);
 
     return Buffer.concat(buffers);
   }
 
-  private serializeColumn(values: any[], dataType: number): Buffer {
+  protected serializeColumn(values: any[], dataType: number): Buffer {
     // TSDataType from Apache TSFile:
     // BOOLEAN(0), INT32(1), INT64(2), FLOAT(3), DOUBLE(4), TEXT(5),
     // VECTOR(6), UNKNOWN(7), TIMESTAMP(8), DATE(9), BLOB(10), STRING(11), OBJECT(12)
@@ -437,7 +650,7 @@ export class Session {
     }
   }
 
-  private serializeBitMaps(
+  protected serializeBitMaps(
     bitMaps: (boolean[] | null)[],
     rowCount: number,
   ): Buffer {

@@ -5,7 +5,7 @@
  * operations in IoTDB, including explicit session management and nodeUrls.
  */
 
-import { TableSessionPool, PoolConfigBuilder, TSDataType } from "../src";
+import { TableSessionPool, PoolConfigBuilder, TSDataType, ColumnCategory, TableTablet } from "../src";
 
 async function main() {
   console.log("=== TableSessionPool Example ===\n");
@@ -89,16 +89,25 @@ async function main() {
     await dataSet.close();
     console.log("Databases found:", dbCount);
 
-    // Insert data
-    console.log("Inserting data...");
-    await pool.insertTablet({
-      deviceId: "root.table_example.table1",
-      measurements: ["column1", "column2"],
-      dataTypes: [TSDataType.INT32, TSDataType.FLOAT],
-      timestamps: [Date.now()],
-      values: [[100, 25.5]],
-    });
-    console.log("Data inserted");
+    // Insert data using TableTablet class with addRow method
+    console.log("Inserting table data using addRow...");
+    const tablet = new TableTablet(
+      "table1",
+      ["device_id", "column1", "column2"],
+      [TSDataType.TEXT, TSDataType.INT32, TSDataType.FLOAT],
+      [
+        ColumnCategory.TAG,    // device_id - indexed tag for filtering
+        ColumnCategory.FIELD,  // column1 - measurement value
+        ColumnCategory.FIELD,  // column2 - measurement value
+      ]
+    );
+    
+    // Add rows one at a time - convenient for streaming data
+    tablet.addRow(Date.now(), ["device_001", 100, 25.5]);
+    tablet.addRow(Date.now() + 1000, ["device_002", 200, 30.5]);
+    
+    await pool.insertTablet(tablet);
+    console.log("Table data inserted");
 
     // Approach 2: Explicit session management
     console.log("\n--- Approach 2: Explicit session management ---");
@@ -118,15 +127,21 @@ async function main() {
       await queryDataSet.close();
       console.log("Query result:", rowCount, "rows");
 
-      // Insert with explicit session
-      await session.insertTablet({
-        deviceId: "root.table_example.table1",
-        measurements: ["column1", "column2"],
-        dataTypes: [TSDataType.INT32, TSDataType.FLOAT],
-        timestamps: [Date.now() + 1000],
-        values: [[200, 30.5]],
-      });
-      console.log("Data inserted via explicit session");
+      // Insert with explicit session using TableTablet class with addRow
+      const sessionTablet = new TableTablet(
+        "table1",
+        ["device_id", "column1", "column2"],
+        [TSDataType.TEXT, TSDataType.INT32, TSDataType.FLOAT],
+        [
+          ColumnCategory.TAG,    // device_id - indexed tag
+          ColumnCategory.FIELD,  // column1 - measurement
+          ColumnCategory.FIELD,  // column2 - measurement
+        ]
+      );
+      sessionTablet.addRow(Date.now() + 2000, ["device_003", 300, 35.5]);
+      
+      await session.insertTablet(sessionTablet);
+      console.log("Table data inserted via explicit session");
     } finally {
       // Always release the session back to the pool
       pool.releaseSession(session);

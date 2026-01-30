@@ -17,13 +17,15 @@
  * under the License.
  */
 
-import { Session } from './Session';
+import { TableSession } from './TableSession';
+import { Session, TableTablet, TreeTablet } from './Session';
 import { PoolConfig, SQL_DIALECT_TABLE, InternalConfig } from '../utils/Config';
 import { BaseSessionPool } from './BaseSessionPool';
 
 /**
  * TableSessionPool provides connection pooling optimized for table model operations
  * Automatically configures sessions for table mode by setting sql_dialect to 'table'
+ * Uses TableSession instances which extend Session
  */
 export class TableSessionPool extends BaseSessionPool {
   constructor(
@@ -49,7 +51,8 @@ export class TableSessionPool extends BaseSessionPool {
       sqlDialect: SQL_DIALECT_TABLE,
     };
     
-    const session = new Session(internalConfig);
+    // Create TableSession instance instead of Session
+    const session = new TableSession(internalConfig);
     await session.open();
 
     // Set session to table model by executing a USE DATABASE command if database is specified
@@ -65,7 +68,21 @@ export class TableSessionPool extends BaseSessionPool {
 
     return session;
   }
+
+  /**
+   * Insert tablet (supports both tree and table models, but typically used for TableTablet)
+   * @param tablet TreeTablet or TableTablet
+   */
+  async insertTablet(tablet: TreeTablet | TableTablet): Promise<void> {
+    const session = await this.getSession();
+    try {
+      return await session.insertTablet(tablet);
+    } finally {
+      this.releaseSession(session);
+    }
+  }
 }
 
-// Re-export types for backward compatibility
-export type { QueryResult, Tablet } from './Session';
+// Re-export types for backward compatibility and new types
+export type { QueryResult, Tablet, TreeTablet, TableTablet, ColumnCategory } from './Session';
+export { TableSession } from './TableSession';

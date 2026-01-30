@@ -5,7 +5,7 @@
  * management in high-concurrency scenarios, including explicit session management.
  */
 
-import { SessionPool, PoolConfigBuilder } from "../src";
+import { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } from "../src";
 
 async function main() {
   console.log("=== SessionPool Example ===\n");
@@ -85,15 +85,17 @@ async function main() {
     try {
       console.log("Executing operations with explicit session...");
 
-      // Insert data
-      await session.insertTablet({
-        deviceId: "root.pool_example.sensor1",
-        measurements: ["value"],
-        dataTypes: [TSDataType.FLOAT],
-        timestamps: [Date.now()],
-        values: [[42.5]],
-      });
-      console.log("Data inserted via explicit session");
+      // Insert data using TreeTablet class with addRow
+      const tablet = new TreeTablet(
+        "root.pool_example.sensor1",
+        ["value"],
+        [TSDataType.FLOAT]
+      );
+      tablet.addRow(Date.now(), [42.5]);
+      tablet.addRow(Date.now() + 1000, [43.0]);
+      
+      await session.insertTablet(tablet);
+      console.log("Tree tablet data inserted via explicit session");
 
       // Query data
       const dataSet = await session.executeQueryStatement(
