@@ -405,12 +405,14 @@ export class Session {
   private async insertTreeTabletInternal(
     tablet: TreeTablet | ITreeTablet,
   ): Promise<void> {
-    logger.debug(`Inserting tree tablet for device: ${tablet.deviceId}`);
+    const totalStartTime = Date.now();
+    logger.debug(`[PERF] insertTreeTablet START for device: ${tablet.deviceId}, rows: ${tablet.timestamps.length}, cols: ${tablet.measurements.length}`);
 
     const client = this.connection.getClient();
     const sessionId = this.connection.getSessionId();
 
     // Validate timestamps and convert to BigInt
+    const timestampStartTime = Date.now();
     const bigIntTimestamps = tablet.timestamps.map((t) => {
       if (typeof t !== "number" || !Number.isFinite(t)) {
         throw new Error(`Invalid timestamp: ${t}`);
@@ -423,24 +425,37 @@ export class Session {
     bigIntTimestamps.forEach((ts, i) => {
       timestampBuffer.writeBigInt64BE(ts, i * 8);
     });
+    const timestampDuration = Date.now() - timestampStartTime;
+    logger.debug(`[PERF] Timestamp serialization: ${timestampDuration}ms`);
+
+    // Serialize values
+    const serializeStartTime = Date.now();
+    const valuesBuffer = this.serializeTabletValues(
+      tablet.values,
+      tablet.dataTypes,
+      tablet.timestamps.length,
+    );
+    const serializeDuration = Date.now() - serializeStartTime;
+    logger.debug(`[PERF] Values serialization: ${serializeDuration}ms, buffer size: ${valuesBuffer.length} bytes`);
 
     const req = new ttypes.TSInsertTabletReq({
       sessionId: sessionId,
       prefixPath: tablet.deviceId,
       measurements: tablet.measurements,
-      values: this.serializeTabletValues(
-        tablet.values,
-        tablet.dataTypes,
-        tablet.timestamps.length,
-      ),
+      values: valuesBuffer,
       timestamps: timestampBuffer,
       types: tablet.dataTypes,
       size: tablet.timestamps.length,
       isAligned: false,
     });
 
+    const rpcStartTime = Date.now();
     return new Promise((resolve, reject) => {
       client.insertTablet(req, (err: Error, response: any) => {
+        const rpcDuration = Date.now() - rpcStartTime;
+        const totalDuration = Date.now() - totalStartTime;
+        logger.debug(`[PERF] RPC call: ${rpcDuration}ms, Total: ${totalDuration}ms (serialize: ${timestampDuration + serializeDuration}ms)`);
+
         if (err) {
           reject(err);
           return;
@@ -482,12 +497,14 @@ export class Session {
   private async insertTableTabletInternal(
     tablet: TableTablet | ITableTablet,
   ): Promise<void> {
-    logger.debug(`Inserting table tablet for table: ${tablet.tableName}`);
+    const totalStartTime = Date.now();
+    logger.debug(`[PERF] insertTableTablet START for table: ${tablet.tableName}, rows: ${tablet.timestamps.length}, cols: ${tablet.columnNames.length}`);
 
     const client = this.connection.getClient();
     const sessionId = this.connection.getSessionId();
 
     // Validate timestamps and convert to BigInt
+    const timestampStartTime = Date.now();
     const bigIntTimestamps = tablet.timestamps.map((t) => {
       if (typeof t !== "number" || !Number.isFinite(t)) {
         throw new Error(`Invalid timestamp: ${t}`);
@@ -500,15 +517,13 @@ export class Session {
     bigIntTimestamps.forEach((ts, i) => {
       timestampBuffer.writeBigInt64BE(ts, i * 8);
     });
+    const timestampDuration = Date.now() - timestampStartTime;
+    logger.debug(`[PERF] Timestamp serialization: ${timestampDuration}ms`);
 
     // For table model, use database.tableName format for prefixPath
     // If tableName already contains database (e.g., "test.table1"), use as-is
     // Otherwise, we need to get current database context
     const prefixPath = tablet.tableName;
-
-    logger.debug(
-      `Table insert: prefixPath=${prefixPath}, columns=${tablet.columnNames.length}, rows=${tablet.timestamps.length}`,
-    );
 
     // Convert columnCategories to signed bytes for Thrift
     const columnCategoriesBytes = tablet.columnCategories.map((category) => {
@@ -516,15 +531,21 @@ export class Session {
       return category < 128 ? category : category - 256;
     });
 
+    // Serialize values
+    const serializeStartTime = Date.now();
+    const valuesBuffer = this.serializeTabletValues(
+      tablet.values,
+      tablet.columnTypes,
+      tablet.timestamps.length,
+    );
+    const serializeDuration = Date.now() - serializeStartTime;
+    logger.debug(`[PERF] Values serialization: ${serializeDuration}ms, buffer size: ${valuesBuffer.length} bytes`);
+
     const req = new ttypes.TSInsertTabletReq({
       sessionId: sessionId,
       prefixPath: prefixPath,
       measurements: tablet.columnNames,
-      values: this.serializeTabletValues(
-        tablet.values,
-        tablet.columnTypes,
-        tablet.timestamps.length,
-      ),
+      values: valuesBuffer,
       timestamps: timestampBuffer,
       types: tablet.columnTypes,
       size: tablet.timestamps.length,
@@ -533,8 +554,13 @@ export class Session {
       columnCategories: columnCategoriesBytes, // Pass column categories for table model
     });
 
+    const rpcStartTime = Date.now();
     return new Promise((resolve, reject) => {
       client.insertTablet(req, (err: Error, response: any) => {
+        const rpcDuration = Date.now() - rpcStartTime;
+        const totalDuration = Date.now() - totalStartTime;
+        logger.debug(`[PERF] RPC call: ${rpcDuration}ms, Total: ${totalDuration}ms (serialize: ${timestampDuration + serializeDuration}ms)`);
+
         if (err) {
           reject(err);
           return;

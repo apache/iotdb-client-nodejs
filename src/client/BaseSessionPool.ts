@@ -219,25 +219,33 @@ export abstract class BaseSessionPool {
    * The session must be released back to the pool using releaseSession() after use
    */
   async getSession(): Promise<Session> {
+    const startTime = Date.now();
+    
     // Try to find an available session
     const available = this.pool.find((ps) => !ps.inUse && ps.session.isOpen());
     if (available) {
       available.inUse = true;
       available.lastUsed = Date.now();
+      const duration = Date.now() - startTime;
+      logger.debug(`[PERF] getSession (reuse): ${duration}ms, pool: ${this.pool.length}, available: ${this.getAvailableSize()}, inUse: ${this.getInUseSize()}`);
       return available.session;
     }
 
     // Create new session if pool is not full
     if (this.pool.length < (this.config.maxPoolSize || 10)) {
+      logger.debug(`[PERF] getSession creating new session, pool: ${this.pool.length}/${this.config.maxPoolSize || 10}`);
       const session = await this.createSession();
       const pooledSession = this.pool.find((ps) => ps.session === session);
       if (pooledSession) {
         pooledSession.inUse = true;
       }
+      const duration = Date.now() - startTime;
+      logger.debug(`[PERF] getSession (new): ${duration}ms`);
       return session;
     }
 
     // Wait for a session to become available
+    logger.debug(`[PERF] getSession waiting, pool full: ${this.pool.length}, waitQueue: ${this.waitQueue.length}`);
     const waitTimeout = this.config.waitTimeout || 60000;
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
@@ -255,6 +263,8 @@ export abstract class BaseSessionPool {
 
       this.waitQueue.push((session: Session) => {
         clearTimeout(timeoutId);
+        const duration = Date.now() - startTime;
+        logger.debug(`[PERF] getSession (waited): ${duration}ms`);
         resolve(session);
       });
     });
@@ -352,6 +362,7 @@ export abstract class BaseSessionPool {
   async insertTablet(
     tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet,
   ): Promise<void> {
+    const totalStartTime = Date.now();
     const deviceId = this.extractDeviceId(tablet);
     
     // Check cache for optimal endpoint if redirection is enabled
@@ -359,6 +370,7 @@ export abstract class BaseSessionPool {
       ? this.redirectCache.get(deviceId)
       : null;
     
+    const sessionStartTime = Date.now();
     let session: Session;
     
     if (cachedEndpoint) {
@@ -368,10 +380,16 @@ export abstract class BaseSessionPool {
       // Use round-robin selection
       session = await this.getSession();
     }
+    const sessionDuration = Date.now() - sessionStartTime;
     
     try {
       // Attempt insert
+      const insertStartTime = Date.now();
       await session.insertTablet(tablet);
+      const insertDuration = Date.now() - insertStartTime;
+      const totalDuration = Date.now() - totalStartTime;
+      
+      logger.debug(`[PERF] Pool insertTablet total: ${totalDuration}ms (session: ${sessionDuration}ms, insert: ${insertDuration}ms)`);
       
       // Check if server recommended a redirect for future operations
       if (this.config.enableRedirection) {

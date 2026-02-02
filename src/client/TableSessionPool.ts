@@ -150,25 +150,18 @@ export class TableSessionPool extends BaseSessionPool {
   }
 
   /**
-   * Override getSession to ensure returned session has correct database context
-   * This is specific to table model
+   * Override getSession to return session from pool
+   * 
+   * Database context is managed through a two-step process:
+   * 1. During session creation (createPoolSession), the session gets the current database context
+   * 2. When executeNonQueryStatement detects a USE statement, syncDatabaseContextToPool() is called
+   *    to synchronize the new database context to all idle sessions in the pool
+   * 
+   * This ensures all sessions maintain correct database context without needing to execute USE
+   * on every getSession() call, which significantly improves performance in high-concurrency scenarios.
    */
   async getSession(): Promise<Session> {
-    const session = await super.getSession();
-
-    // Ensure session has correct database context (table model only)
-    if (this.currentDatabase) {
-      try {
-        await session.executeNonQueryStatement(`USE ${this.currentDatabase}`);
-        logger.debug(
-          `Ensured database context ${this.currentDatabase} for session`,
-        );
-      } catch (error) {
-        logger.warn(`Failed to ensure database context: ${error}`);
-      }
-    }
-
-    return session;
+    return super.getSession();
   }
 
   /**
@@ -179,18 +172,12 @@ export class TableSessionPool extends BaseSessionPool {
     return this.currentDatabase;
   }
 
-  /**
-   * Insert tablet (supports both tree and table models, but typically used for TableTablet)
-   * @param tablet TreeTablet or TableTablet
-   */
-  async insertTablet(tablet: TreeTablet | TableTablet): Promise<void> {
-    const session = await this.getSession();
-    try {
-      return await session.insertTablet(tablet);
-    } finally {
-      this.releaseSession(session);
-    }
-  }
+  // insertTablet is inherited from BaseSessionPool.
+  // Previously this class had a simpler override that:
+  // 1. Did not include [PERF] debug logging for performance analysis
+  // 2. Did not support redirection cache for optimal write routing
+  // 3. Had less detailed timing metrics for session acquisition vs insert operation
+  // The inherited method from BaseSessionPool provides all these features.
 }
 
 // Re-export types for backward compatibility and new types

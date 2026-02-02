@@ -153,12 +153,8 @@ async function executeWrite(pool, work, session = null) {
     ...row
   ]);
   
-  // Table name without database prefix (database context set via USE DATABASE)
-  const tableName = work.tableName || 'benchmark_table';
-  const database = work.database || 'benchmark_db';
-  
   const tablet = {
-    tableName: tableName,  // Simple table name (not database.tableName)
+    tableName: work.tableName || 'benchmark_table',
     columnNames: columnNames,
     columnTypes: columnTypes,
     columnCategories: columnCategories,
@@ -166,19 +162,12 @@ async function executeWrite(pool, work, session = null) {
     values: valuesWithDeviceId,
   };
   
-  // Use explicit session management to ensure database context
+  // Use bound session if provided (device-session binding mode),
+  // otherwise use pool's insertTablet which handles session management efficiently
   if (session) {
-    // Bound session - already has database context
     await session.insertTablet(tablet);
   } else {
-    // Pool - need to get session and set database context
-    const poolSession = await pool.getSession();
-    try {
-      await poolSession.executeNonQueryStatement(`USE ${database}`);
-      await poolSession.insertTablet(tablet);
-    } finally {
-      pool.releaseSession(poolSession);
-    }
+    await pool.insertTablet(tablet);
   }
   
   // Return number of data points written

@@ -293,44 +293,69 @@ async function executeConcurrentWithBinding(pool, workload, poolSize, metrics, e
 }
 
 /**
- * Execute write operations concurrently
+ * Execute write operations concurrently with pre-acquired sessions
+ * Each worker acquires a dedicated session at the start and uses it for all operations,
+ * which significantly improves performance by avoiding session acquisition overhead per operation.
+ * 
  * @param {Object} pool - IoTDB session pool
  * @param {Array} workload - Array of work items
  * @param {number} concurrency - Number of concurrent workers
  * @param {MetricsCollector} metrics - Metrics collector
- * @param {Function} executor - Async function to execute each work item
+ * @param {Function} executor - Async function to execute each work item: (pool, work, session) => Promise<dataPoints>
+ *                              The session parameter is the pre-acquired dedicated session for the worker.
+ *                              Executors should use this session directly when provided (not null) for optimal performance.
+ *                              If executor doesn't need the session, it can use pool methods which will handle session management.
  */
 async function executeConcurrent(pool, workload, concurrency, metrics, executor) {
+  // Pre-acquire sessions for all workers to enable true concurrent execution
+  const actualConcurrency = Math.min(concurrency, workload.length);
+  const sessions = [];
+  
+  for (let i = 0; i < actualConcurrency; i++) {
+    sessions.push(await pool.getSession());
+  }
+  
+  console.log(`[Concurrent Execution] Pre-acquired ${sessions.length} sessions for ${actualConcurrency} workers`);
+  
   let workIndex = 0;
   const workers = [];
 
-  // Worker function
-  const worker = async () => {
-    while (workIndex < workload.length) {
-      const index = workIndex++;
-      if (index >= workload.length) break;
-      
-      const work = workload[index];
-      const startTime = performance.now();
-      
-      try {
-        const dataPoints = await executor(pool, work);
-        const latency = performance.now() - startTime;
-        metrics.recordOperation(latency, dataPoints, true);
-      } catch (error) {
-        const latency = performance.now() - startTime;
-        metrics.recordOperation(latency, 0, false, error);
+  try {
+    // Worker function - uses dedicated session for all its operations
+    const worker = async (workerSession) => {
+      while (workIndex < workload.length) {
+        const index = workIndex++;
+        if (index >= workload.length) break;
+        
+        const work = workload[index];
+        const startTime = performance.now();
+        
+        try {
+          // Pass the pre-acquired session to executor for direct use
+          const dataPoints = await executor(pool, work, workerSession);
+          const latency = performance.now() - startTime;
+          metrics.recordOperation(latency, dataPoints, true);
+        } catch (error) {
+          const latency = performance.now() - startTime;
+          metrics.recordOperation(latency, 0, false, error);
+        }
       }
+    };
+
+    // Start workers, each with its own dedicated session
+    for (let i = 0; i < actualConcurrency; i++) {
+      workers.push(worker(sessions[i]));
     }
-  };
 
-  // Start workers
-  for (let i = 0; i < concurrency; i++) {
-    workers.push(worker());
+    // Wait for all workers to complete
+    await Promise.all(workers);
+  } finally {
+    // Release all sessions back to pool
+    for (const session of sessions) {
+      pool.releaseSession(session);
+    }
+    console.log(`[Concurrent Execution] Released ${sessions.length} sessions`);
   }
-
-  // Wait for all workers to complete
-  await Promise.all(workers);
 }
 
 /**
