@@ -31,6 +31,8 @@ The Apache IoTDB Node.js Client is a high-performance, feature-rich client libra
 
 - **Session Management**: Single session with query, non-query, and insertTablet operations
 - **SessionPool**: Connection pooling for high-concurrency scenarios with automatic load balancing
+  - ✨ **Enhanced Metrics**: Comprehensive pool monitoring (totalCount, idleCount, activeCount, waitingCount)
+  - ✨ **Wait Queue Tracking**: Monitor requests waiting for connections
 - **TableSessionPool**: Specialized pool for table model operations with database context management
 - **Multi-Node Support**: Round-robin load balancing across multiple IoTDB nodes with failover
 - **SSL/TLS Support**: Secure connections with customizable SSL options and certificate validation
@@ -213,6 +215,45 @@ await pool.insertTablet({
 // Get pool statistics
 console.log('Pool size:', pool.getPoolSize());
 console.log('Available:', pool.getAvailableSize());
+
+// Enhanced metrics for better monitoring
+console.log('Waiting requests:', pool.waitingCount);
+const stats = pool.getPoolStats();
+console.log('Comprehensive stats:', stats);
+// { total, idle, active, waiting, endpoints, redirectCacheSize }
+
+await pool.close();
+```
+
+### Enhanced Pool Metrics
+
+The SessionPool provides comprehensive metrics for monitoring pool health:
+
+```typescript
+const pool = new SessionPool({
+  host: 'localhost',
+  port: 6667,
+  maxPoolSize: 10,
+  minPoolSize: 2,
+  waitTimeout: 60000,        // Timeout for waiting requests (ms)
+  maxIdleTime: 60000,        // Idle connection timeout (ms)
+});
+
+// New metric getters (backward compatible with old methods)
+console.log('Total connections:', pool.totalCount);
+console.log('Idle connections:', pool.idleCount);
+console.log('Active connections:', pool.activeCount);
+console.log('Waiting requests:', pool.waitingCount);
+
+// Comprehensive stats object
+const stats = pool.getPoolStats();
+// { total, idle, active, waiting, endpoints, redirectCacheSize }
+```
+
+**Key Features:**
+- ✅ **Enhanced Metrics**: Comprehensive pool health monitoring
+- ✅ **Wait Queue Tracking**: Monitor requests waiting for connections
+- ✅ **Backward Compatible**: All existing code works unchanged
 
 await pool.close();
 ```
@@ -526,7 +567,7 @@ const config = new PoolConfigBuilder()
 
 ### Data Types
 
-IoTDB Node.js client supports all IoTDB data types including BOOLEAN, INT32, INT64, FLOAT, DOUBLE, TEXT, BLOB, STRING, DATE, and TIMESTAMP. See [DATA_TYPES.md](./DATA_TYPES.md) for comprehensive documentation on:
+IoTDB Node.js client supports all IoTDB data types including BOOLEAN, INT32, INT64, FLOAT, DOUBLE, TEXT, BLOB, STRING, DATE, and TIMESTAMP. See [Data Types Reference](docs/data-types.md) for comprehensive documentation on:
 - Type mappings between JavaScript and IoTDB
 - Usage examples for each data type
 - Best practices and encoding options
@@ -1399,15 +1440,25 @@ Comprehensive documentation is available in the [docs/](docs/) directory:
 
 ### User Guides
 
+- **[Documentation Index](docs/README.md)** - Complete documentation overview and navigation
 - **[Tree Model User Guide](docs/user-guide-tree.md)** - Complete guide for timeseries data model
 - **[Table Model User Guide](docs/user-guide-table.md)** - Complete guide for relational data model
 - **[SessionDataSet Guide](docs/sessiondataset-guide.md)** - Working with query results
 - **[Data Types Reference](docs/data-types.md)** - Complete data type documentation
 - **[TypeScript Examples](docs/typescript-examples.md)** - TypeScript usage guide
 
+### Performance Documentation
+
+- **[Performance Documentation Index](docs/PERFORMANCE_INDEX.md)** ⭐ **START HERE for performance**
+- **[Performance Guide](docs/performance-guide.md)** - User-focused optimization guide with benchmarks
+- **[pg-Inspired Optimizations](docs/pg-inspired-optimizations.md)** - Developer-focused implementation details
+- **[Performance Analysis Summary](PERFORMANCE_ANALYSIS_SUMMARY.md)** - Pool optimization testing analysis
+- **[Redirection Design](docs/redirection-design.md)** - Client-side redirection optimization
+
 ### Technical Documentation
 
 - **[Implementation Guide](docs/implementation.md)** - Architecture and core components
+- **[Tablet Interfaces](docs/tablet-interfaces.md)** - TreeTablet vs TableTablet guide
 - **[Thrift Documentation](docs/thrift.md)** - Thrift code generation
 - **[Build Infrastructure](docs/development/build-infrastructure.md)** - Build system details
 
@@ -1422,6 +1473,8 @@ Comprehensive documentation is available in the [docs/](docs/) directory:
 - **[Project Status](docs/project-status.md)** - Implementation status and roadmap
 - **[Changelog](CHANGELOG.md)** - Version history
 - **[GitHub Workflows](.github/workflows/README.md)** - CI/CD documentation
+- **[E2E Test Status](E2E_TEST_STATUS.md)** - End-to-end testing status
+- **[Tablet Refactoring Summary](TABLET_REFACTORING_SUMMARY.md)** - Summary of tablet interface changes
 
 ## Contributing
 

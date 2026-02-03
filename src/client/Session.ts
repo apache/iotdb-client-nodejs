@@ -30,6 +30,11 @@ import { SessionDataSet } from "./SessionDataSet";
 import { RowRecord } from "./RowRecord";
 import { BaseColumnDecoder, ColumnEncoding, Column } from "./ColumnDecoder";
 import { RedirectException } from "../utils/Errors";
+import { 
+  serializeColumnFast, 
+  serializeTimestamps 
+} from "../utils/FastSerializer";
+import { globalBufferPool } from "../utils/BufferPool";
 
 const ttypes = require("../thrift/generated/client_types");
 
@@ -411,22 +416,13 @@ export class Session {
     const client = this.connection.getClient();
     const sessionId = this.connection.getSessionId();
 
-    // Validate timestamps and convert to BigInt
+    // Serialize timestamps - use fast serializer if enabled
     const timestampStartTime = Date.now();
-    const bigIntTimestamps = tablet.timestamps.map((t) => {
-      if (typeof t !== "number" || !Number.isFinite(t)) {
-        throw new Error(`Invalid timestamp: ${t}`);
-      }
-      return BigInt(Math.floor(t));
-    });
-
-    // Serialize timestamps in big-endian format (Java/network standard)
-    const timestampBuffer = Buffer.alloc(bigIntTimestamps.length * 8);
-    bigIntTimestamps.forEach((ts, i) => {
-      timestampBuffer.writeBigInt64BE(ts, i * 8);
-    });
+    const timestampBuffer = this.config.enableFastSerialization
+      ? serializeTimestamps(tablet.timestamps)
+      : this.serializeTimestampsLegacy(tablet.timestamps);
     const timestampDuration = Date.now() - timestampStartTime;
-    logger.debug(`[PERF] Timestamp serialization: ${timestampDuration}ms`);
+    logger.debug(`[PERF] Timestamp serialization (fast=${this.config.enableFastSerialization}): ${timestampDuration}ms`);
 
     // Serialize values
     const serializeStartTime = Date.now();
@@ -503,22 +499,13 @@ export class Session {
     const client = this.connection.getClient();
     const sessionId = this.connection.getSessionId();
 
-    // Validate timestamps and convert to BigInt
+    // Serialize timestamps - use fast serializer if enabled
     const timestampStartTime = Date.now();
-    const bigIntTimestamps = tablet.timestamps.map((t) => {
-      if (typeof t !== "number" || !Number.isFinite(t)) {
-        throw new Error(`Invalid timestamp: ${t}`);
-      }
-      return BigInt(Math.floor(t));
-    });
-
-    // Serialize timestamps in big-endian format
-    const timestampBuffer = Buffer.alloc(bigIntTimestamps.length * 8);
-    bigIntTimestamps.forEach((ts, i) => {
-      timestampBuffer.writeBigInt64BE(ts, i * 8);
-    });
+    const timestampBuffer = this.config.enableFastSerialization
+      ? serializeTimestamps(tablet.timestamps)
+      : this.serializeTimestampsLegacy(tablet.timestamps);
     const timestampDuration = Date.now() - timestampStartTime;
-    logger.debug(`[PERF] Timestamp serialization: ${timestampDuration}ms`);
+    logger.debug(`[PERF] Timestamp serialization (fast=${this.config.enableFastSerialization}): ${timestampDuration}ms`);
 
     // For table model, use database.tableName format for prefixPath
     // If tableName already contains database (e.g., "test.table1"), use as-is
@@ -599,6 +586,24 @@ export class Session {
     });
   }
 
+  /**
+   * Legacy timestamp serialization (for when enableFastSerialization=false)
+   */
+  private serializeTimestampsLegacy(timestamps: number[]): Buffer {
+    const bigIntTimestamps = timestamps.map((t) => {
+      if (typeof t !== "number" || !Number.isFinite(t)) {
+        throw new Error(`Invalid timestamp: ${t}`);
+      }
+      return BigInt(Math.floor(t));
+    });
+
+    const timestampBuffer = Buffer.alloc(bigIntTimestamps.length * 8);
+    bigIntTimestamps.forEach((ts, i) => {
+      timestampBuffer.writeBigInt64BE(ts, i * 8);
+    });
+    return timestampBuffer;
+  }
+
   protected serializeTabletValues(
     values: any[][],
     dataTypes: number[],
@@ -628,7 +633,10 @@ export class Session {
         }
       }
 
-      const buffer = this.serializeColumn(columnValues, dataType);
+      // Use fast serialization if enabled, otherwise fall back to legacy
+      const buffer = this.config.enableFastSerialization
+        ? serializeColumnFast(columnValues, dataType)
+        : this.serializeColumn(columnValues, dataType);
       buffers.push(buffer);
       bitMaps.push(hasNull ? nullBitmap : null);
     }

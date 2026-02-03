@@ -119,6 +119,17 @@ async function main() {
     console.log("Total connections:", pool.getPoolSize());
     console.log("Available connections:", pool.getAvailableSize());
     console.log("In-use connections:", pool.getInUseSize());
+
+    // Enhanced metrics
+    console.log("\nEnhanced pool metrics:");
+    console.log("Total (new API):", pool.totalCount);
+    console.log("Idle (new API):", pool.idleCount);
+    console.log("Active (new API):", pool.activeCount);
+    console.log("Waiting requests:", pool.waitingCount);
+
+    // Comprehensive statistics
+    const stats = pool.getPoolStats();
+    console.log("\nComprehensive stats:", stats);
   } catch (error) {
     console.error("Error:", error);
   } finally {

@@ -445,4 +445,49 @@ export abstract class BaseSessionPool {
   getInUseSize(): number {
     return this.pool.filter((ps) => ps.inUse).length;
   }
+
+  /**
+   * Get total number of sessions in the pool
+   * @alias getPoolSize
+   */
+  get totalCount(): number {
+    return this.pool.length;
+  }
+
+  /**
+   * Get number of idle sessions
+   * @alias getAvailableSize
+   */
+  get idleCount(): number {
+    return this.pool.filter((ps) => !ps.inUse).length;
+  }
+
+  /**
+   * Get number of active (in-use) sessions
+   * @alias getInUseSize
+   */
+  get activeCount(): number {
+    return this.pool.filter((ps) => ps.inUse).length;
+  }
+
+  /**
+   * Get number of requests waiting for a session
+   */
+  get waitingCount(): number {
+    return this.waitQueue.length;
+  }
+
+  /**
+   * Get comprehensive pool statistics
+   */
+  getPoolStats() {
+    return {
+      total: this.totalCount,
+      idle: this.idleCount,
+      active: this.activeCount,
+      waiting: this.waitingCount,
+      endpoints: this.endPoints.length,
+      redirectCacheSize: this.redirectCache.getStats().size,
+    };
+  }
 }

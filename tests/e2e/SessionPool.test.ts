@@ -283,4 +283,31 @@ describe("SessionPool E2E Tests", () => {
     // All sessions should be available again
     expect(pool.getAvailableSize()).toBeGreaterThanOrEqual(3);
   });
+
+  test("Should support enhanced metrics", async () => {
+    if (!isConnected) {
+      console.log("Skipping test - no IoTDB connection");
+      return;
+    }
+
+    // Test new getter properties
+    expect(pool.totalCount).toBe(pool.getPoolSize());
+    expect(pool.idleCount).toBe(pool.getAvailableSize());
+    expect(pool.activeCount).toBe(pool.getInUseSize());
+    expect(pool.waitingCount).toBeGreaterThanOrEqual(0);
+
+    // Test getPoolStats method
+    const stats = pool.getPoolStats();
+    expect(stats).toHaveProperty("total");
+    expect(stats).toHaveProperty("idle");
+    expect(stats).toHaveProperty("active");
+    expect(stats).toHaveProperty("waiting");
+    expect(stats).toHaveProperty("endpoints");
+    expect(stats).toHaveProperty("redirectCacheSize");
+
+    expect(stats.total).toBe(pool.totalCount);
+    expect(stats.idle).toBe(pool.idleCount);
+    expect(stats.active).toBe(pool.activeCount);
+    expect(stats.waiting).toBe(pool.waitingCount);
+  });
 });

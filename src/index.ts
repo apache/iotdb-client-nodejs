@@ -43,3 +43,5 @@ export { TSDataType, getDataTypeName } from "./utils/DataTypes";
 export { RedirectException, TSStatusCode } from "./utils/Errors";
 export { RedirectCache } from "./client/RedirectCache";
 export { enableGlobalCleanup } from "./utils/ProcessCleanup";
+export { BufferPool, globalBufferPool } from "./utils/BufferPool";
+export { serializeColumnFast, serializeTimestamps } from "./utils/FastSerializer";
