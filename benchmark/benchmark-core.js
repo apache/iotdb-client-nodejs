@@ -19,13 +19,13 @@
 
 /**
  * Benchmark Core Engine
- * 
+ *
  * Core benchmark engine for managing test execution, client pools,
  * and performance metrics collection. Supports concurrent operations
  * with detailed latency and throughput tracking.
  */
 
-const { performance } = require('perf_hooks');
+const { performance } = require("perf_hooks");
 
 /**
  * Performance metrics collector
@@ -54,7 +54,7 @@ class MetricsCollector {
   recordOperation(latencyMs, dataPoints, success = true, error = null) {
     this.operationCount++;
     this.operations.push(latencyMs);
-    
+
     if (success) {
       this.successCount++;
       this.totalDataPoints += dataPoints;
@@ -81,7 +81,7 @@ class MetricsCollector {
    */
   getPercentile(percentile) {
     if (this.operations.length === 0) return 0;
-    
+
     const sorted = [...this.operations].sort((a, b) => a - b);
     const index = Math.ceil((percentile / 100) * sorted.length) - 1;
     return sorted[Math.max(0, index)];
@@ -99,27 +99,38 @@ class MetricsCollector {
       // Time
       duration_ms: durationMs.toFixed(2),
       duration_sec: durationSec.toFixed(2),
-      
+
       // Operations
       total_operations: this.operationCount,
       successful_operations: this.successCount,
       failed_operations: this.failureCount,
-      success_rate: ((this.successCount / this.operationCount) * 100).toFixed(2) + '%',
-      
+      success_rate:
+        ((this.successCount / this.operationCount) * 100).toFixed(2) + "%",
+
       // Data points
       total_data_points: this.totalDataPoints,
-      
+
       // Throughput
       operations_per_sec: (this.operationCount / durationSec).toFixed(2),
       points_per_sec: (this.totalDataPoints / durationSec).toFixed(2),
-      
+
       // Latency (ms)
       latency: {
-        min: this.operations.length > 0 ? Math.min(...this.operations).toFixed(2) : 0,
-        max: this.operations.length > 0 ? Math.max(...this.operations).toFixed(2) : 0,
-        avg: this.operations.length > 0 
-          ? (this.operations.reduce((a, b) => a + b, 0) / this.operations.length).toFixed(2) 
-          : 0,
+        min:
+          this.operations.length > 0
+            ? Math.min(...this.operations).toFixed(2)
+            : 0,
+        max:
+          this.operations.length > 0
+            ? Math.max(...this.operations).toFixed(2)
+            : 0,
+        avg:
+          this.operations.length > 0
+            ? (
+                this.operations.reduce((a, b) => a + b, 0) /
+                this.operations.length
+              ).toFixed(2)
+            : 0,
       },
     };
 
@@ -137,43 +148,49 @@ class MetricsCollector {
   /**
    * Print statistics summary
    */
-  printStats(label = 'Benchmark Results') {
+  printStats(label = "Benchmark Results") {
     const stats = this.getStats();
-    
-    console.log('\n' + '='.repeat(80));
+
+    console.log("\n" + "=".repeat(80));
     console.log(label.toUpperCase());
-    console.log('='.repeat(80));
-    
-    console.log('\n[Execution Time]');
-    console.log(`  Duration:              ${stats.duration_sec}s (${stats.duration_ms}ms)`);
-    
-    console.log('\n[Operations]');
+    console.log("=".repeat(80));
+
+    console.log("\n[Execution Time]");
+    console.log(
+      `  Duration:              ${stats.duration_sec}s (${stats.duration_ms}ms)`,
+    );
+
+    console.log("\n[Operations]");
     console.log(`  Total Operations:      ${stats.total_operations}`);
     console.log(`  Successful:            ${stats.successful_operations}`);
     console.log(`  Failed:                ${stats.failed_operations}`);
     console.log(`  Success Rate:          ${stats.success_rate}`);
-    
-    console.log('\n[Data Points]');
-    console.log(`  Total Points Written:  ${stats.total_data_points.toLocaleString()}`);
-    
-    console.log('\n[Throughput]');
+
+    console.log("\n[Data Points]");
+    console.log(
+      `  Total Points Written:  ${stats.total_data_points.toLocaleString()}`,
+    );
+
+    console.log("\n[Throughput]");
     console.log(`  Operations/sec:        ${stats.operations_per_sec}`);
-    console.log(`  Points/sec:            ${parseFloat(stats.points_per_sec).toLocaleString()}`);
-    
-    console.log('\n[Latency (ms)]');
+    console.log(
+      `  Points/sec:            ${parseFloat(stats.points_per_sec).toLocaleString()}`,
+    );
+
+    console.log("\n[Latency (ms)]");
     console.log(`  Min:                   ${stats.latency.min}ms`);
     console.log(`  Max:                   ${stats.latency.max}ms`);
     console.log(`  Average:               ${stats.latency.avg}ms`);
-    
+
     if (this.config.ENABLE_DETAILED_METRICS && stats.latency.p50) {
       console.log(`  P50 (Median):          ${stats.latency.p50}ms`);
       console.log(`  P90:                   ${stats.latency.p90}ms`);
       console.log(`  P95:                   ${stats.latency.p95}ms`);
       console.log(`  P99:                   ${stats.latency.p99}ms`);
     }
-    
+
     if (this.failureCount > 0 && this.errors.length > 0) {
-      console.log('\n[Error Samples]');
+      console.log("\n[Error Samples]");
       const sampleErrors = this.errors.slice(0, 5);
       sampleErrors.forEach((err, idx) => {
         console.log(`  ${idx + 1}. ${err.message || err}`);
@@ -182,8 +199,8 @@ class MetricsCollector {
         console.log(`  ... and ${this.errors.length - 5} more errors`);
       }
     }
-    
-    console.log('\n' + '='.repeat(80));
+
+    console.log("\n" + "=".repeat(80));
   }
 }
 
@@ -220,13 +237,13 @@ class ProgressReporter {
     const operations = this.metrics.operationCount - this.lastOperationCount;
     const opsPerSec = (operations / elapsed) * 1000;
     const totalPoints = this.metrics.totalDataPoints;
-    
+
     console.log(
       `[Progress] Operations: ${this.metrics.operationCount}, ` +
-      `Rate: ${opsPerSec.toFixed(2)} ops/s, ` +
-      `Total Points: ${totalPoints.toLocaleString()}`
+        `Rate: ${opsPerSec.toFixed(2)} ops/s, ` +
+        `Total Points: ${totalPoints.toLocaleString()}`,
     );
-    
+
     this.lastReportTime = now;
     this.lastOperationCount = this.metrics.operationCount;
   }
@@ -240,31 +257,39 @@ class ProgressReporter {
  * @param {MetricsCollector} metrics - Metrics collector
  * @param {Function} executor - Async function to execute each work item (pool, work, session)
  */
-async function executeConcurrentWithBinding(pool, workload, poolSize, metrics, executor) {
+async function executeConcurrentWithBinding(
+  pool,
+  workload,
+  poolSize,
+  metrics,
+  executor,
+) {
   // Get sessions from pool and bind to devices
   const sessions = [];
   for (let i = 0; i < poolSize; i++) {
     sessions.push(await pool.getSession());
   }
-  
-  console.log(`[Device-Session Binding] Bound ${sessions.length} sessions to devices`);
-  
+
+  console.log(
+    `[Device-Session Binding] Bound ${sessions.length} sessions to devices`,
+  );
+
   try {
     const workers = [];
 
     // Each worker handles workload items for devices bound to its session
     // Workload is pre-ordered, so we can partition it evenly
     const workPerSession = Math.ceil(workload.length / poolSize);
-    
+
     const worker = async (sessionIdx) => {
       const session = sessions[sessionIdx];
       const startIdx = sessionIdx * workPerSession;
       const endIdx = Math.min(startIdx + workPerSession, workload.length);
-      
+
       for (let i = startIdx; i < endIdx; i++) {
         const work = workload[i];
         const startTime = performance.now();
-        
+
         try {
           const dataPoints = await executor(pool, work, session);
           const latency = performance.now() - startTime;
@@ -288,7 +313,9 @@ async function executeConcurrentWithBinding(pool, workload, poolSize, metrics, e
     for (const session of sessions) {
       pool.releaseSession(session);
     }
-    console.log(`[Device-Session Binding] Released ${sessions.length} sessions`);
+    console.log(
+      `[Device-Session Binding] Released ${sessions.length} sessions`,
+    );
   }
 }
 
@@ -296,7 +323,7 @@ async function executeConcurrentWithBinding(pool, workload, poolSize, metrics, e
  * Execute write operations concurrently with pre-acquired sessions
  * Each worker acquires a dedicated session at the start and uses it for all operations,
  * which significantly improves performance by avoiding session acquisition overhead per operation.
- * 
+ *
  * @param {Object} pool - IoTDB session pool
  * @param {Array} workload - Array of work items
  * @param {number} concurrency - Number of concurrent workers
@@ -306,17 +333,25 @@ async function executeConcurrentWithBinding(pool, workload, poolSize, metrics, e
  *                              Executors should use this session directly when provided (not null) for optimal performance.
  *                              If executor doesn't need the session, it can use pool methods which will handle session management.
  */
-async function executeConcurrent(pool, workload, concurrency, metrics, executor) {
+async function executeConcurrent(
+  pool,
+  workload,
+  concurrency,
+  metrics,
+  executor,
+) {
   // Pre-acquire sessions for all workers to enable true concurrent execution
   const actualConcurrency = Math.min(concurrency, workload.length);
-  const sessions = [];
-  
-  for (let i = 0; i < actualConcurrency; i++) {
-    sessions.push(await pool.getSession());
-  }
-  
-  console.log(`[Concurrent Execution] Pre-acquired ${sessions.length} sessions for ${actualConcurrency} workers`);
-  
+
+  // Acquire all sessions in parallel
+  const sessions = await Promise.all(
+    Array.from({ length: actualConcurrency }, () => pool.getSession()),
+  );
+
+  console.log(
+    `[Concurrent Execution] Pre-acquired ${sessions.length} sessions for ${actualConcurrency} workers`,
+  );
+
   let workIndex = 0;
   const workers = [];
 
@@ -326,10 +361,10 @@ async function executeConcurrent(pool, workload, concurrency, metrics, executor)
       while (workIndex < workload.length) {
         const index = workIndex++;
         if (index >= workload.length) break;
-        
+
         const work = workload[index];
         const startTime = performance.now();
-        
+
         try {
           // Pass the pre-acquired session to executor for direct use
           const dataPoints = await executor(pool, work, workerSession);
@@ -367,49 +402,63 @@ async function executeConcurrent(pool, workload, concurrency, metrics, executor)
  * @param {Function} workloadGenerator - Function to generate workload
  * @returns {Object} Test results
  */
-async function runBenchmark(pool, testData, config, executor, workloadGenerator) {
-  console.log('\n' + '='.repeat(80));
-  console.log('STARTING BENCHMARK TEST');
-  console.log('='.repeat(80));
+async function runBenchmark(
+  pool,
+  testData,
+  config,
+  executor,
+  workloadGenerator,
+) {
+  console.log("\n" + "=".repeat(80));
+  console.log("STARTING BENCHMARK TEST");
+  console.log("=".repeat(80));
 
   const metrics = new MetricsCollector(config);
   const reporter = new ProgressReporter(config, metrics);
 
   // Generate workload
-  console.log('\nGenerating workload...');
+  console.log("\nGenerating workload...");
   const workload = workloadGenerator(testData, config);
   console.log(`Workload generated: ${workload.length} operations`);
 
   // Warmup phase
   if (config.WARMUP_ROUNDS > 0) {
-    console.log(`\n[Warmup Phase] Running ${config.WARMUP_ROUNDS} warmup rounds...`);
+    console.log(
+      `\n[Warmup Phase] Running ${config.WARMUP_ROUNDS} warmup rounds...`,
+    );
     for (let round = 0; round < config.WARMUP_ROUNDS; round++) {
       const warmupMetrics = new MetricsCollector(config);
       warmupMetrics.start();
-      
+
       await executeConcurrent(
-        pool, 
-        workload.slice(0, Math.min(10, workload.length)), 
+        pool,
+        workload.slice(0, Math.min(10, workload.length)),
         Math.min(config.CLIENT_NUMBER, 2),
         warmupMetrics,
-        executor
+        executor,
       );
-      
+
       warmupMetrics.end();
-      console.log(`  Warmup round ${round + 1}/${config.WARMUP_ROUNDS} completed`);
+      console.log(
+        `  Warmup round ${round + 1}/${config.WARMUP_ROUNDS} completed`,
+      );
     }
   }
 
   // Main test phase
   if (config.ENABLE_DEVICE_SESSION_BINDING) {
-    console.log(`\n[Test Phase] Running benchmark with device-session binding (${config.POOL_MAX_SIZE} sessions)...`);
+    console.log(
+      `\n[Test Phase] Running benchmark with device-session binding (${config.POOL_MAX_SIZE} sessions)...`,
+    );
   } else {
-    console.log(`\n[Test Phase] Running benchmark with ${config.CLIENT_NUMBER} concurrent clients...`);
+    console.log(
+      `\n[Test Phase] Running benchmark with ${config.CLIENT_NUMBER} concurrent clients...`,
+    );
   }
-  
+
   metrics.start();
   reporter.start();
-  
+
   try {
     if (config.ENABLE_DEVICE_SESSION_BINDING) {
       await executeConcurrentWithBinding(
@@ -417,7 +466,7 @@ async function runBenchmark(pool, testData, config, executor, workloadGenerator)
         workload,
         config.POOL_MAX_SIZE,
         metrics,
-        executor
+        executor,
       );
     } else {
       await executeConcurrent(
@@ -425,7 +474,7 @@ async function runBenchmark(pool, testData, config, executor, workloadGenerator)
         workload,
         config.CLIENT_NUMBER,
         metrics,
-        executor
+        executor,
       );
     }
   } finally {
@@ -434,7 +483,7 @@ async function runBenchmark(pool, testData, config, executor, workloadGenerator)
   }
 
   // Print results
-  metrics.printStats('Benchmark Results');
+  metrics.printStats("Benchmark Results");
 
   return metrics.getStats();
 }

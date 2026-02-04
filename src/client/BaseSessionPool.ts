@@ -35,6 +35,7 @@ import { logger } from "../utils/Logger";
 import { registerClosable, unregisterClosable } from "../utils/ProcessCleanup";
 import { RedirectCache } from "./RedirectCache";
 import { RedirectException } from "../utils/Errors";
+import Denque from "denque";
 
 interface PooledSession {
   session: Session;
@@ -50,7 +51,9 @@ export abstract class BaseSessionPool {
   protected config: PoolConfig;
   protected endPoints: EndPoint[];
   protected pool: PooledSession[] = [];
-  protected waitQueue: Array<(session: Session) => void> = [];
+  protected waitQueue: Denque<(session: Session) => void> = new Denque();
+  protected idleSessions: Denque<PooledSession> = new Denque();
+  protected activeSessions: Set<PooledSession> = new Set();
   protected currentEndPointIndex = 0;
   protected cleanupInterval: NodeJS.Timeout | null = null;
   protected redirectCache: RedirectCache;
@@ -102,11 +105,11 @@ export abstract class BaseSessionPool {
     // Initialize redirect cache
     this.redirectCache = new RedirectCache(
       this.config.redirectCacheTTL || 300000,
-      10000 // max size
+      10000, // max size
     );
 
     logger.info(
-      `${this.getPoolName()} created with ${this.endPoints.length} endpoints, max pool size: ${this.config.maxPoolSize}, redirection: ${this.config.enableRedirection ? 'enabled' : 'disabled'}`,
+      `${this.getPoolName()} created with ${this.endPoints.length} endpoints, max pool size: ${this.config.maxPoolSize}, redirection: ${this.config.enableRedirection ? "enabled" : "disabled"}`,
     );
 
     registerClosable(this);
@@ -123,19 +126,20 @@ export abstract class BaseSessionPool {
   protected abstract createPoolSession(): Promise<Session>;
 
   async init(): Promise<void> {
-    // Create minimum pool size connections
+    // Create minimum pool size connections in parallel
     const minSize = this.config.minPoolSize || 1;
-    for (let i = 0; i < minSize; i++) {
-      try {
-        await this.createSession();
-      } catch (error: any) {
-        const errorMsg = `Failed to create session ${i + 1}/${minSize}: ${error.message}`;
-        logger.error(errorMsg);
-        if (error.stack) {
-          logger.error(`Stack trace: ${error.stack}`);
-        }
-        throw new Error(errorMsg);
+
+    try {
+      await Promise.all(
+        Array.from({ length: minSize }, () => this.createSession()),
+      );
+    } catch (error: any) {
+      const errorMsg = `Failed to initialize pool: ${error.message}`;
+      logger.error(errorMsg);
+      if (error.stack) {
+        logger.error(`Stack trace: ${error.stack}`);
       }
+      throw new Error(errorMsg);
     }
 
     // Start cleanup interval with proper async handling
@@ -152,11 +156,14 @@ export abstract class BaseSessionPool {
   private async createSession(): Promise<Session> {
     const session = await this.createPoolSession();
 
-    this.pool.push({
+    const pooledSession: PooledSession = {
       session,
       lastUsed: Date.now(),
       inUse: false,
-    });
+    };
+
+    this.pool.push(pooledSession);
+    this.idleSessions.push(pooledSession);
 
     return session;
   }
@@ -172,13 +179,15 @@ export abstract class BaseSessionPool {
   /**
    * Extract device ID from tablet for caching
    */
-  protected extractDeviceId(tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet): string {
-    if ('deviceId' in tablet) {
+  protected extractDeviceId(
+    tablet: TreeTablet | ITreeTablet | TableTablet | ITableTablet,
+  ): string {
+    if ("deviceId" in tablet) {
       return tablet.deviceId;
-    } else if ('tableName' in tablet) {
+    } else if ("tableName" in tablet) {
       return tablet.tableName;
     }
-    throw new Error('Unable to extract device ID from tablet');
+    throw new Error("Unable to extract device ID from tablet");
   }
 
   /**
@@ -186,33 +195,34 @@ export abstract class BaseSessionPool {
    */
   protected async getSessionForEndpoint(endpoint: EndPoint): Promise<Session> {
     const key = `${endpoint.host}:${endpoint.port}`;
-    
+
     // Check if we already have a session for this endpoint
     let pooledSession = this.endPointToSession.get(key);
-    
+
     if (pooledSession && pooledSession.session.isOpen()) {
       pooledSession.inUse = true;
       pooledSession.lastUsed = Date.now();
       return pooledSession.session;
     }
-    
+
     // Create new session for this endpoint
     const session = await this.createPoolSession();
-    
+
     pooledSession = {
       session,
       lastUsed: Date.now(),
       inUse: true,
     };
-    
+
     this.endPointToSession.set(key, pooledSession);
     this.pool.push(pooledSession);
-    
-    logger.info(`Created new session for redirect endpoint: ${endpoint.host}:${endpoint.port}`);
-    
+
+    logger.info(
+      `Created new session for redirect endpoint: ${endpoint.host}:${endpoint.port}`,
+    );
+
     return session;
   }
-
 
   /**
    * Get a session from the pool
@@ -220,23 +230,40 @@ export abstract class BaseSessionPool {
    */
   async getSession(): Promise<Session> {
     const startTime = Date.now();
-    
-    // Try to find an available session
-    const available = this.pool.find((ps) => !ps.inUse && ps.session.isOpen());
-    if (available) {
-      available.inUse = true;
-      available.lastUsed = Date.now();
-      const duration = Date.now() - startTime;
-      logger.debug(`[PERF] getSession (reuse): ${duration}ms, pool: ${this.pool.length}, available: ${this.getAvailableSize()}, inUse: ${this.getInUseSize()}`);
-      return available.session;
+
+    // Try to get an idle session (O(1) operation)
+    if (this.idleSessions.length > 0) {
+      const pooledSession = this.idleSessions.shift()!;
+
+      // Verify session is still open
+      if (pooledSession.session.isOpen()) {
+        this.activeSessions.add(pooledSession);
+        pooledSession.lastUsed = Date.now();
+        const duration = Date.now() - startTime;
+        logger.debug(
+          `[PERF] getSession (reuse): ${duration}ms, pool: ${this.pool.length}, available: ${this.getAvailableSize()}, inUse: ${this.getInUseSize()}`,
+        );
+        return pooledSession.session;
+      } else {
+        // Session is closed, remove from pool
+        const index = this.pool.indexOf(pooledSession);
+        if (index > -1) {
+          this.pool.splice(index, 1);
+        }
+        // Continue to create a new session
+      }
     }
 
     // Create new session if pool is not full
     if (this.pool.length < (this.config.maxPoolSize || 10)) {
-      logger.debug(`[PERF] getSession creating new session, pool: ${this.pool.length}/${this.config.maxPoolSize || 10}`);
+      logger.debug(
+        `[PERF] getSession creating new session, pool: ${this.pool.length}/${this.config.maxPoolSize || 10}`,
+      );
       const session = await this.createSession();
       const pooledSession = this.pool.find((ps) => ps.session === session);
       if (pooledSession) {
+        this.idleSessions.shift(); // Remove from idle since we just added it
+        this.activeSessions.add(pooledSession);
         pooledSession.inUse = true;
       }
       const duration = Date.now() - startTime;
@@ -245,13 +272,16 @@ export abstract class BaseSessionPool {
     }
 
     // Wait for a session to become available
-    logger.debug(`[PERF] getSession waiting, pool full: ${this.pool.length}, waitQueue: ${this.waitQueue.length}`);
+    logger.debug(
+      `[PERF] getSession waiting, pool full: ${this.pool.length}, waitQueue: ${this.waitQueue.length}`,
+    );
     const waitTimeout = this.config.waitTimeout || 60000;
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        const index = this.waitQueue.indexOf(resolve);
+        const waiters = this.waitQueue.toArray();
+        const index = waiters.indexOf(resolve);
         if (index > -1) {
-          this.waitQueue.splice(index, 1);
+          this.waitQueue.remove(index, 1);
         }
         reject(new Error("Timeout waiting for available session"));
       }, waitTimeout);
@@ -277,16 +307,28 @@ export abstract class BaseSessionPool {
   releaseSession(session: Session): void {
     const pooledSession = this.pool.find((ps) => ps.session === session);
     if (pooledSession) {
+      // Remove from active sessions
+      this.activeSessions.delete(pooledSession);
+
+      // Update tracking state
       pooledSession.inUse = false;
       pooledSession.lastUsed = Date.now();
 
-      // Notify waiting requests
+      // Check if there are waiting requests
       if (this.waitQueue.length > 0) {
         const waiter = this.waitQueue.shift();
         if (waiter) {
+          // Move to active for the waiter
+          this.activeSessions.add(pooledSession);
           pooledSession.inUse = true;
           waiter(session);
+        } else {
+          // No waiter actually found, add back to idle
+          this.idleSessions.push(pooledSession);
         }
+      } else {
+        // No waiters, add back to idle
+        this.idleSessions.push(pooledSession);
       }
     }
   }
@@ -296,21 +338,28 @@ export abstract class BaseSessionPool {
     const maxIdleTime = this.config.maxIdleTime || 60000;
     const minSize = this.config.minPoolSize || 1;
 
-    const sessionsToRemove = this.pool.filter(
-      (ps) =>
-        !ps.inUse &&
-        now - ps.lastUsed > maxIdleTime &&
-        this.pool.length > minSize,
-    );
+    // Only iterate idle sessions (O(k) where k = idle count, not O(n))
+    const sessionsToRemove: PooledSession[] = [];
+    const idleArray = this.idleSessions.toArray();
 
-    // Properly await async operations
+    for (const ps of idleArray) {
+      if (now - ps.lastUsed > maxIdleTime && this.pool.length > minSize) {
+        sessionsToRemove.push(ps);
+      }
+    }
+
     await Promise.all(
       sessionsToRemove.map(async (ps) => {
         try {
           await ps.session.close();
-          const index = this.pool.indexOf(ps);
-          if (index > -1) {
-            this.pool.splice(index, 1);
+          const poolIndex = this.pool.indexOf(ps);
+          if (poolIndex > -1) {
+            this.pool.splice(poolIndex, 1);
+          }
+          // Remove from idle sessions deque
+          const idleIndex = this.idleSessions.toArray().indexOf(ps);
+          if (idleIndex > -1) {
+            this.idleSessions.remove(idleIndex, 1);
           }
           logger.debug(`Removed idle session from ${this.getPoolName()}`);
         } catch (error) {
@@ -364,15 +413,15 @@ export abstract class BaseSessionPool {
   ): Promise<void> {
     const totalStartTime = Date.now();
     const deviceId = this.extractDeviceId(tablet);
-    
+
     // Check cache for optimal endpoint if redirection is enabled
-    const cachedEndpoint = this.config.enableRedirection 
+    const cachedEndpoint = this.config.enableRedirection
       ? this.redirectCache.get(deviceId)
       : null;
-    
+
     const sessionStartTime = Date.now();
     let session: Session;
-    
+
     if (cachedEndpoint) {
       // Use cached endpoint for optimal routing
       session = await this.getSessionForEndpoint(cachedEndpoint);
@@ -381,16 +430,18 @@ export abstract class BaseSessionPool {
       session = await this.getSession();
     }
     const sessionDuration = Date.now() - sessionStartTime;
-    
+
     try {
       // Attempt insert
       const insertStartTime = Date.now();
       await session.insertTablet(tablet);
       const insertDuration = Date.now() - insertStartTime;
       const totalDuration = Date.now() - totalStartTime;
-      
-      logger.debug(`[PERF] Pool insertTablet total: ${totalDuration}ms (session: ${sessionDuration}ms, insert: ${insertDuration}ms)`);
-      
+
+      logger.debug(
+        `[PERF] Pool insertTablet total: ${totalDuration}ms (session: ${sessionDuration}ms, insert: ${insertDuration}ms)`,
+      );
+
       // Check if server recommended a redirect for future operations
       if (this.config.enableRedirection) {
         const redirectEndpoint = session.getAndClearLastRedirect();
@@ -398,11 +449,10 @@ export abstract class BaseSessionPool {
           // Cache the recommended endpoint for future writes
           this.redirectCache.set(deviceId, redirectEndpoint);
           logger.info(
-            `Cached redirect recommendation: ${deviceId} -> ${redirectEndpoint.host}:${redirectEndpoint.port}`
+            `Cached redirect recommendation: ${deviceId} -> ${redirectEndpoint.host}:${redirectEndpoint.port}`,
           );
         }
       }
-      
     } finally {
       // Always release session
       this.releaseSession(session);
@@ -427,7 +477,9 @@ export abstract class BaseSessionPool {
     );
 
     this.pool = [];
-    this.waitQueue = [];
+    this.idleSessions.clear();
+    this.activeSessions.clear();
+    this.waitQueue.clear();
     this.endPointToSession.clear();
     this.redirectCache.clear();
     unregisterClosable(this);
@@ -439,11 +491,11 @@ export abstract class BaseSessionPool {
   }
 
   getAvailableSize(): number {
-    return this.pool.filter((ps) => !ps.inUse).length;
+    return this.idleSessions.length;
   }
 
   getInUseSize(): number {
-    return this.pool.filter((ps) => ps.inUse).length;
+    return this.activeSessions.size;
   }
 
   /**
@@ -459,7 +511,7 @@ export abstract class BaseSessionPool {
    * @alias getAvailableSize
    */
   get idleCount(): number {
-    return this.pool.filter((ps) => !ps.inUse).length;
+    return this.idleSessions.length;
   }
 
   /**
@@ -467,7 +519,7 @@ export abstract class BaseSessionPool {
    * @alias getInUseSize
    */
   get activeCount(): number {
-    return this.pool.filter((ps) => ps.inUse).length;
+    return this.activeSessions.size;
   }
 
   /**

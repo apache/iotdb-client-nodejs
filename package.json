@@ -32,6 +32,7 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
+    "denque": "^2.1.0",
     "thrift": "^0.22.0"
   },
   "devDependencies": {

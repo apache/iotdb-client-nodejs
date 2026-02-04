@@ -38,3 +38,4 @@ iotdb/
 # Benchmark generated data files
 benchmark/benchmark_data*.json
 benchmark/*.log
+.sisyphus
