@@ -45,3 +45,15 @@ export { RedirectCache } from "./client/RedirectCache";
 export { enableGlobalCleanup } from "./utils/ProcessCleanup";
 export { BufferPool, globalBufferPool } from "./utils/BufferPool";
 export { serializeColumnFast, serializeTimestamps } from "./utils/FastSerializer";
+
+// Concurrent execution utilities for Node.js optimization
+export {
+  executeConcurrent,
+  executeBatched,
+  chunkArray,
+  createSemaphore,
+} from "./utils/ConcurrentExecutor";
+export type {
+  ConcurrentOptions,
+  ConcurrentResult,
+} from "./utils/ConcurrentExecutor";

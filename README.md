@@ -295,6 +295,120 @@ try {
 await pool.close();
 ```
 
+### Concurrent Operations (High Throughput)
+
+For high-throughput scenarios, use the concurrent APIs optimized for Node.js:
+
+#### Batch Insert - Single RPC Call
+
+Insert multiple tablets in a single RPC call (most efficient for tree model):
+
+```typescript
+import { Session, TreeTablet, TSDataType } from 'iotdb-client-nodejs';
+
+const session = new Session({ host: 'localhost', port: 6667 });
+await session.open();
+
+// Create multiple tablets
+const tablets = [];
+for (let i = 0; i < 100; i++) {
+  tablets.push({
+    deviceId: `root.test.device${i}`,
+    measurements: ['temperature'],
+    dataTypes: [TSDataType.FLOAT],
+    timestamps: [Date.now() + i * 1000],
+    values: [[25.0 + i]],
+  });
+}
+
+// Insert all tablets in single RPC call
+await session.insertTablets(tablets);
+
+await session.close();
+```
+
+#### Concurrent Pool Insertion
+
+Use pool-level concurrent insertion for maximum throughput:
+
+```typescript
+import { SessionPool } from 'iotdb-client-nodejs';
+
+const pool = new SessionPool({
+  host: 'localhost',
+  port: 6667,
+  maxPoolSize: 20,
+  minPoolSize: 5,
+});
+await pool.init();
+
+// Generate tablets
+const tablets = generateTablets(1000);
+
+// Insert concurrently with controlled parallelism
+// Pre-acquires sessions to avoid contention
+await pool.insertTabletsParallel(tablets, { concurrency: 20 });
+
+await pool.close();
+```
+
+#### Generic Parallel Execution
+
+Execute any operations in parallel using the pool:
+
+```typescript
+import { SessionPool } from 'iotdb-client-nodejs';
+
+const pool = new SessionPool({ host: 'localhost', port: 6667, maxPoolSize: 10 });
+await pool.init();
+
+const deviceNames = ['d1', 'd2', 'd3', 'd4', 'd5'];
+
+// Execute operations in parallel
+const results = await pool.executeParallel(
+  deviceNames,
+  async (session, deviceName) => {
+    await session.executeNonQueryStatement(
+      `CREATE TIMESERIES root.test.${deviceName}.value WITH DATATYPE=FLOAT`
+    );
+    return `Created ${deviceName}`;
+  },
+  { concurrency: 5 }
+);
+
+console.log(results); // ['Created d1', 'Created d2', ...]
+
+await pool.close();
+```
+
+#### Utility Functions
+
+Standalone utilities for concurrent execution:
+
+```typescript
+import { executeConcurrent, chunkArray, createSemaphore } from 'iotdb-client-nodejs';
+
+// Execute any async operations with controlled concurrency
+const result = await executeConcurrent(
+  items,
+  async (item) => await processItem(item),
+  { concurrency: 10, logProgressEvery: 100 }
+);
+console.log(`Success: ${result.successCount}, Failed: ${result.failureCount}`);
+
+// Split arrays for batch processing
+const chunks = chunkArray(largeArray, 100);
+
+// Fine-grained concurrency control
+const sem = createSemaphore(5);
+await sem.acquire();
+try {
+  await doWork();
+} finally {
+  sem.release();
+}
+```
+
 ### Multi-Node Support
 
 #### Method 1: Using nodeUrls with String Format (Recommended)

@@ -386,4 +386,100 @@ describe("TableSessionPool E2E Tests", () => {
       await stringNodeUrlsPool.close();
     }
   });
+
+  test("Should insert multiple tablets concurrently using insertTabletsParallel", async () => {
+    if (!isConnected) {
+      console.log("Skipping test - no IoTDB connection");
+      return;
+    }
+
+    const tableName = "parallel_test_table";
+
+    // Ensure database and table exist
+    await pool.executeNonQueryStatement("USE test");
+    try {
+      await pool.executeNonQueryStatement(
+        `CREATE TABLE IF NOT EXISTS ${tableName}(device_id STRING TAG, value FLOAT FIELD)`
+      );
+    } catch (e: any) {
+      // Ignore if already exists
+    }
+
+    // Create multiple tablets for different devices
+    const tablets = [];
+    const baseTime = Date.now();
+    
+    for (let i = 0; i < 10; i++) {
+      tablets.push({
+        tableName: tableName,
+        columnNames: ["device_id", "value"],
+        columnTypes: [TSDataType.STRING, TSDataType.FLOAT],
+        columnCategories: [ColumnCategory.TAG, ColumnCategory.FIELD],
+        timestamps: [baseTime + i * 1000],
+        values: [[`parallel_device_${i}`, 25.5 + i]],
+      });
+    }
+
+    // Insert tablets concurrently
+    await pool.insertTabletsParallel(tablets, { concurrency: 5 });
+
+    // Verify data was inserted
+    const dataSet = await pool.executeQueryStatement(
+      `SELECT COUNT(*) FROM ${tableName}`
+    );
+    
+    let count = 0;
+    if (await dataSet.hasNext()) {
+      const row = dataSet.next();
+      count = row.getLongByIndex(0);
+    }
+    await dataSet.close();
+
+    expect(count).toBeGreaterThanOrEqual(10);
+  });
+
+  test("Should execute multiple operations in parallel using executeParallel", async () => {
+    if (!isConnected) {
+      console.log("Skipping test - no IoTDB connection");
+      return;
+    }
+
+    await pool.executeNonQueryStatement("USE test");
+
+    const tableNames = ["exec_table1", "exec_table2", "exec_table3"];
+    
+    // Create tables in parallel
+    const results = await pool.executeParallel(
+      tableNames,
+      async (session, tableName) => {
+        try {
+          await session.executeNonQueryStatement(
+            `CREATE TABLE IF NOT EXISTS ${tableName}(device_id STRING TAG, value FLOAT FIELD)`
+          );
+        } catch (e: any) {
+          // Ignore if already exists
+        }
+        return tableName;
+      },
+      { concurrency: 3 }
+    );
+
+    expect(results).toHaveLength(3);
+    expect(results).toContain("exec_table1");
+    expect(results).toContain("exec_table2");
+    expect(results).toContain("exec_table3");
+
+    // Verify tables exist
+    const dataSet = await pool.executeQueryStatement("SHOW TABLES");
+    const tableList: string[] = [];
+    while (await dataSet.hasNext()) {
+      const row = dataSet.next();
+      tableList.push(row.getStringByIndex(0));
+    }
+    await dataSet.close();
+
+    // Should have at least our 3 tables
+    const foundTables = tableNames.filter(t => tableList.includes(t));
+    expect(foundTables.length).toBe(3);
+  });
 });

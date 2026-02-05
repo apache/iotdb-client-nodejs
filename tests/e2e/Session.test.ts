@@ -187,4 +187,78 @@ describe("Session E2E Tests", () => {
 
     expect(rowCount).toBeGreaterThan(0);
   }, 60000);
+
+  test("Should insert multiple tablets in single RPC call using insertTablets", async () => {
+    if (!session.isOpen()) {
+      console.log("Skipping test - no IoTDB connection");
+      return;
+    }
+
+    const baseTime = Date.now();
+    
+    // Create multiple tablets for different devices
+    const tablets = [];
+    for (let i = 0; i < 5; i++) {
+      tablets.push({
+        deviceId: `root.test.batch_device${i}`,
+        measurements: ["temperature"],
+        dataTypes: [TSDataType.FLOAT],
+        timestamps: [baseTime + i * 1000],
+        values: [[25.5 + i]],
+      });
+    }
+
+    // Insert all tablets in single RPC call
+    await session.insertTablets(tablets);
+
+    // Verify data was inserted
+    const dataSet = await session.executeQueryStatement(
+      "SELECT * FROM root.test.batch_device0"
+    );
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+
+    expect(rowCount).toBeGreaterThan(0);
+  }, 60000);
+
+  test("Should insert tablets concurrently using insertTabletsParallel", async () => {
+    if (!session.isOpen()) {
+      console.log("Skipping test - no IoTDB connection");
+      return;
+    }
+
+    const baseTime = Date.now();
+    
+    // Create tablets
+    const tablets = [];
+    for (let i = 0; i < 10; i++) {
+      tablets.push({
+        deviceId: `root.test.parallel_batch${i}`,
+        measurements: ["humidity"],
+        dataTypes: [TSDataType.FLOAT],
+        timestamps: [baseTime + i * 1000],
+        values: [[60.0 + i]],
+      });
+    }
+
+    // Insert tablets concurrently (using single session, not pool)
+    await session.insertTabletsParallel(tablets, 5);
+
+    // Verify data was inserted
+    const dataSet = await session.executeQueryStatement(
+      "SELECT * FROM root.test.parallel_batch0"
+    );
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+
+    expect(rowCount).toBeGreaterThan(0);
+  }, 60000);
 });

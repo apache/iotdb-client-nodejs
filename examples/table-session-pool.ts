@@ -2,7 +2,8 @@
  * TableSessionPool Example
  *
  * This example demonstrates how to use TableSessionPool for table model
- * operations in IoTDB, including explicit session management and nodeUrls.
+ * operations in IoTDB, including explicit session management, nodeUrls,
+ * and concurrent batch operations for high-throughput scenarios.
  */
 
 import { TableSessionPool, PoolConfigBuilder, TSDataType, ColumnCategory, TableTablet } from "../src";
@@ -147,6 +148,49 @@ async function main() {
       pool.releaseSession(session);
       console.log("Session released back to the pool");
     }
+
+    // Approach 3: Concurrent batch insertion (NEW API - insertTabletsParallel)
+    console.log("\n--- Approach 3: Concurrent batch insertion (insertTabletsParallel) ---");
+    const tablets = [];
+    const batchTime = Date.now();
+    
+    for (let i = 0; i < 20; i++) {
+      tablets.push({
+        tableName: "batch_table",
+        columnNames: ["device_id", "temperature"],
+        columnTypes: [TSDataType.STRING, TSDataType.FLOAT],  // Use STRING for TAG columns
+        columnCategories: [ColumnCategory.TAG, ColumnCategory.FIELD],
+        timestamps: [batchTime + i * 1000],
+        values: [[`batch_device_${i}`, 20.0 + i]],
+      });
+    }
+
+    console.log(`Inserting ${tablets.length} table tablets concurrently...`);
+    const startTime = Date.now();
+    await pool.insertTabletsParallel(tablets, { concurrency: 5 });
+    const elapsed = Date.now() - startTime;
+    console.log(`Inserted ${tablets.length} tablets in ${elapsed}ms (${(tablets.length * 1000 / elapsed).toFixed(2)} tablets/sec)`);
+
+    // Approach 4: Generic parallel execution (NEW API - executeParallel)
+    console.log("\n--- Approach 4: Generic parallel execution (executeParallel) ---");
+    const tableNames = ["parallel_t1", "parallel_t2", "parallel_t3", "parallel_t4"];
+    
+    console.log(`Creating ${tableNames.length} tables in parallel...`);
+    const results = await pool.executeParallel(
+      tableNames,
+      async (session, tableName) => {
+        try {
+          await session.executeNonQueryStatement(
+            `CREATE TABLE IF NOT EXISTS ${tableName}(device_id TEXT TAG, value FLOAT FIELD)`
+          );
+        } catch {
+          // Ignore if already exists
+        }
+        return `Created ${tableName}`;
+      },
+      { concurrency: 4 }
+    );
+    console.log("Results:", results);
 
     // Pool statistics
     console.log("\nTable pool statistics:");

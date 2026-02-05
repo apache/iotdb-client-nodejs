@@ -1372,4 +1372,174 @@ export class Session {
   isOpen(): boolean {
     return this.connection.isOpen();
   }
+
+  /**
+   * Insert multiple tablets in a single RPC call (batch insert).
+   * This is more efficient than calling insertTablet multiple times,
+   * especially for high-throughput scenarios.
+   * 
+   * Note: All tablets must be tree model tablets (have deviceId).
+   * For table model tablets, use insertTabletsTable().
+   * 
+   * @param tablets Array of TreeTablets to insert
+   * @example
+   * ```typescript
+   * const tablets = [
+   *   { deviceId: 'root.sg.d1', measurements: ['temp'], dataTypes: [3], timestamps: [Date.now()], values: [[25.5]] },
+   *   { deviceId: 'root.sg.d2', measurements: ['temp'], dataTypes: [3], timestamps: [Date.now()], values: [[26.0]] },
+   * ];
+   * await session.insertTablets(tablets);
+   * ```
+   */
+  async insertTablets(tablets: (TreeTablet | ITreeTablet)[]): Promise<void> {
+    if (tablets.length === 0) {
+      return;
+    }
+
+    const totalStartTime = Date.now();
+    logger.debug(`[PERF] insertTablets START for ${tablets.length} tablets`);
+
+    const client = this.connection.getClient();
+    const sessionId = this.connection.getSessionId();
+
+    // Serialize all tablets
+    const prefixPaths: string[] = [];
+    const measurementsList: string[][] = [];
+    const valuesList: Buffer[] = [];
+    const timestampsList: Buffer[] = [];
+    const typesList: number[][] = [];
+    const sizeList: number[] = [];
+
+    const serializeStartTime = Date.now();
+    for (const tablet of tablets) {
+      prefixPaths.push(tablet.deviceId);
+      measurementsList.push(tablet.measurements);
+      typesList.push(tablet.dataTypes);
+      sizeList.push(tablet.timestamps.length);
+
+      // Serialize timestamps
+      const timestampBuffer = this.config.enableFastSerialization
+        ? serializeTimestamps(tablet.timestamps)
+        : this.serializeTimestampsLegacy(tablet.timestamps);
+      timestampsList.push(timestampBuffer);
+
+      // Serialize values
+      const valuesBuffer = this.serializeTabletValues(
+        tablet.values,
+        tablet.dataTypes,
+        tablet.timestamps.length,
+      );
+      valuesList.push(valuesBuffer);
+    }
+    const serializeDuration = Date.now() - serializeStartTime;
+    logger.debug(`[PERF] Tablets serialization: ${serializeDuration}ms`);
+
+    const req = new ttypes.TSInsertTabletsReq({
+      sessionId: sessionId,
+      prefixPaths: prefixPaths,
+      measurementsList: measurementsList,
+      valuesList: valuesList,
+      timestampsList: timestampsList,
+      typesList: typesList,
+      sizeList: sizeList,
+      isAligned: false,
+    });
+
+    const rpcStartTime = Date.now();
+    return new Promise((resolve, reject) => {
+      client.insertTablets(req, (err: Error, response: any) => {
+        const rpcDuration = Date.now() - rpcStartTime;
+        const totalDuration = Date.now() - totalStartTime;
+        logger.debug(`[PERF] insertTablets RPC: ${rpcDuration}ms, Total: ${totalDuration}ms`);
+
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        // Handle redirection recommendation (code 400)
+        // Note: Code 400 means write SUCCEEDED but server recommends a different endpoint for future operations
+        if (response.code === 400) {
+          // Store redirect recommendation if provided (use first device's recommendation)
+          if (response.redirectNode) {
+            this.lastRedirectEndpoint = {
+              host: response.redirectNode.internalIp || response.redirectNode.ip,
+              port: response.redirectNode.port,
+            };
+            logger.debug(
+              `Server recommends endpoint ${this.lastRedirectEndpoint.host}:${this.lastRedirectEndpoint.port} for future writes`
+            );
+          } else {
+            logger.debug(`Server returned code 400 without redirect node`);
+          }
+          // Resolve successfully - the write already succeeded
+          resolve();
+          return;
+        }
+
+        if (response.code !== 200) {
+          reject(new Error(response.message || "Insert tablets failed"));
+          return;
+        }
+
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Insert multiple tablets concurrently using Promise.all.
+   * This is optimized for Node.js async patterns and maximizes throughput
+   * by leveraging the event loop for parallel execution.
+   * 
+   * @param tablets Array of tablets to insert
+   * @param concurrency Maximum number of concurrent insertions (default: 10)
+   * @returns Promise that resolves when all inserts complete
+   * 
+   * @example
+   * ```typescript
+   * const tablets = generateTablets(100);
+   * // Insert 100 tablets with max 20 concurrent operations
+   * await session.insertTabletsParallel(tablets, 20);
+   * ```
+   */
+  async insertTabletsParallel(
+    tablets: (TreeTablet | ITreeTablet | TableTablet | ITableTablet)[],
+    concurrency: number = 10,
+  ): Promise<void> {
+    if (tablets.length === 0) {
+      return;
+    }
+
+    const totalStartTime = Date.now();
+    logger.debug(`[PERF] insertTabletsParallel START: ${tablets.length} tablets, concurrency: ${concurrency}`);
+
+    // Use worker pattern to properly limit concurrency
+    const actualConcurrency = Math.min(concurrency, tablets.length);
+    let tabletIndex = 0;
+    const errors: Error[] = [];
+
+    // Create workers that consume from the tablet queue
+    const workers = Array.from({ length: actualConcurrency }, async () => {
+      while (tabletIndex < tablets.length) {
+        const idx = tabletIndex++;
+        if (idx >= tablets.length) break;
+
+        try {
+          await this.insertTablet(tablets[idx]);
+        } catch (err) {
+          errors.push(err instanceof Error ? err : new Error(String(err)));
+        }
+      }
+    });
+
+    await Promise.all(workers);
+
+    const totalDuration = Date.now() - totalStartTime;
+    logger.debug(`[PERF] insertTabletsParallel COMPLETE: ${totalDuration}ms, ${tablets.length / (totalDuration / 1000)} tablets/sec`);
+
+    if (errors.length > 0) {
+      throw new Error(`${errors.length} of ${tablets.length} tablet inserts failed. First error: ${errors[0].message}`);
+    }
+  }
 }

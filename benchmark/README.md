@@ -4,10 +4,12 @@ Comprehensive performance testing tools for Apache IoTDB Node.js client, inspire
 
 ## Overview
 
-This benchmark suite provides two specialized tools for testing IoTDB write performance:
+This benchmark suite provides specialized tools for testing IoTDB write performance:
 
 - **Tree Model Benchmark** (`benchmark-tree.js`) - Tests timeseries data model using `insertTablet` API
 - **Table Model Benchmark** (`benchmark-table.js`) - Tests relational data model using `insertTablet` API
+- **Tree API Comparison** (`benchmark-comparison.js`) - Compares different insertion methods (tree model)
+- **Table API Comparison** (`benchmark-table-comparison.js`) - Compares different insertion methods (table model)
 
 ### Key Features
 
@@ -19,6 +21,7 @@ This benchmark suite provides two specialized tools for testing IoTDB write perf
 ✅ **Detailed Metrics** - Comprehensive performance statistics including latency percentiles  
 ✅ **Progress Monitoring** - Real-time progress reporting during long tests  
 ✅ **Multi-node Support** - Tests against IoTDB clusters with load balancing  
+✅ **API Comparison** - Compare sequential, batch, and parallel insertion methods
 
 ## Quick Start
 
@@ -47,6 +50,42 @@ This will test the benchmark infrastructure without requiring IoTDB connection, 
 - Data generation
 - Metrics collection
 - Performance reporting
+
+### API Comparison Benchmarks (NEW)
+
+#### Tree Model Comparison
+
+Compare the performance of different insertion methods for tree model:
+
+```bash
+# Run with default settings
+node benchmark/benchmark-comparison.js
+
+# Customize parameters
+TABLET_COUNT=200 CONCURRENCY=20 node benchmark/benchmark-comparison.js
+```
+
+This benchmark compares:
+1. **Sequential insertTablet** - Baseline (one tablet at a time)
+2. **insertTablets** - Batch insert (single RPC for multiple tablets)
+3. **insertTabletsParallel** - Concurrent insertion with pool
+
+#### Table Model Comparison
+
+Compare the performance of different insertion methods for table model:
+
+```bash
+# Run with default settings
+node benchmark/benchmark-table-comparison.js
+
+# Customize parameters
+TABLET_COUNT=200 CONCURRENCY=20 node benchmark/benchmark-table-comparison.js
+```
+
+This benchmark compares:
+1. **Sequential insertTablet** - Baseline (one tablet at a time)
+2. **insertTabletsParallel** - Concurrent insertion with pool
+3. **executeParallel** - Generic parallel execution
 
 ### Build the Client
 

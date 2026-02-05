@@ -34,7 +34,6 @@ import {
 import { logger } from "../utils/Logger";
 import { registerClosable, unregisterClosable } from "../utils/ProcessCleanup";
 import { RedirectCache } from "./RedirectCache";
-import { RedirectException } from "../utils/Errors";
 import Denque from "denque";
 
 interface PooledSession {
@@ -55,7 +54,7 @@ export abstract class BaseSessionPool {
   protected idleSessions: Denque<PooledSession> = new Denque();
   protected activeSessions: Set<PooledSession> = new Set();
   protected currentEndPointIndex = 0;
-  protected cleanupInterval: NodeJS.Timeout | null = null;
+  protected cleanupInterval: ReturnType<typeof setInterval> | null = null;
   protected redirectCache: RedirectCache;
   protected endPointToSession: Map<string, PooledSession> = new Map();
 
@@ -541,5 +540,195 @@ export abstract class BaseSessionPool {
       endpoints: this.endPoints.length,
       redirectCacheSize: this.redirectCache.getStats().size,
     };
+  }
+
+  /**
+   * Insert multiple tablets concurrently using the pool.
+   * This method optimizes for Node.js async patterns by:
+   * 1. Pre-acquiring sessions to avoid contention
+   * 2. Distributing tablets across sessions for parallel execution
+   * 3. Automatically releasing sessions after completion
+   * 
+   * This is the recommended way to achieve high throughput in Node.js.
+   * 
+   * @param tablets Array of tablets to insert
+   * @param options Configuration options
+   * @param options.concurrency Number of concurrent workers (default: pool size or 10)
+   * @returns Promise that resolves when all inserts complete
+   * 
+   * @example
+   * ```typescript
+   * const tablets = generateTablets(1000);
+   * // Insert 1000 tablets using pool's concurrent execution
+   * await pool.insertTabletsParallel(tablets, { concurrency: 20 });
+   * ```
+   */
+  async insertTabletsParallel(
+    tablets: (TreeTablet | ITreeTablet | TableTablet | ITableTablet)[],
+    options?: { concurrency?: number },
+  ): Promise<void> {
+    if (tablets.length === 0) {
+      return;
+    }
+
+    const concurrency = Math.min(
+      options?.concurrency || this.config.maxPoolSize || 10,
+      tablets.length,
+    );
+
+    const totalStartTime = Date.now();
+    logger.debug(
+      `[PERF] Pool insertTabletsParallel START: ${tablets.length} tablets, concurrency: ${concurrency}`,
+    );
+
+    // Pre-acquire sessions to enable true concurrent execution
+    const sessions: Session[] = [];
+    try {
+      for (let i = 0; i < concurrency; i++) {
+        sessions.push(await this.getSession());
+      }
+    } catch (error) {
+      // Release any acquired sessions on error
+      for (const session of sessions) {
+        this.releaseSession(session);
+      }
+      throw error;
+    }
+
+    // Track errors but don't fail fast - continue processing other tablets
+    const errors: Error[] = [];
+    let tabletIndex = 0;
+
+    try {
+      // Create worker promises that consume from the tablet queue
+      const workers = sessions.map(async (session) => {
+        while (tabletIndex < tablets.length) {
+          const idx = tabletIndex++;
+          if (idx >= tablets.length) break;
+
+          const tablet = tablets[idx];
+          try {
+            await session.insertTablet(tablet);
+          } catch (err) {
+            errors.push(err instanceof Error ? err : new Error(String(err)));
+          }
+        }
+      });
+
+      // Wait for all workers to complete
+      await Promise.all(workers);
+    } finally {
+      // Always release all sessions
+      for (const session of sessions) {
+        this.releaseSession(session);
+      }
+    }
+
+    const totalDuration = Date.now() - totalStartTime;
+    const throughput = tablets.length / (totalDuration / 1000);
+    logger.debug(
+      `[PERF] Pool insertTabletsParallel COMPLETE: ${totalDuration}ms, ${throughput.toFixed(2)} tablets/sec`,
+    );
+
+    // If there were errors, throw an aggregate error
+    if (errors.length > 0) {
+      const errorMsg = `${errors.length} of ${tablets.length} tablet inserts failed. First error: ${errors[0].message}`;
+      throw new Error(errorMsg);
+    }
+  }
+
+  /**
+   * Execute multiple operations concurrently using the pool.
+   * This is a generic utility for running any async operations in parallel
+   * while respecting pool size limits.
+   * 
+   * @param items Array of items to process
+   * @param operation Async function to execute for each item
+   * @param options Configuration options
+   * @param options.concurrency Number of concurrent workers (default: pool size or 10)
+   * @param options.stopOnError Whether to stop processing on first error (default: false)
+   * @returns Results array (in same order as input items).
+   *          Note: When stopOnError=false, failed operations will have `undefined` at their index.
+   *          Check array entries for undefined to detect failures.
+   * 
+   * @example
+   * ```typescript
+   * const devices = ['d1', 'd2', 'd3'];
+   * const results = await pool.executeParallel(
+   *   devices,
+   *   async (session, deviceId) => {
+   *     await session.executeNonQueryStatement(`CREATE TIMESERIES root.sg.${deviceId}...`);
+   *     return deviceId;
+   *   },
+   *   { concurrency: 5 }
+   * );
+   * // Check for failures
+   * const failures = results.filter((r, i) => r === undefined);
+   * ```
+   */
+  async executeParallel<T, R>(
+    items: T[],
+    operation: (session: Session, item: T, index: number) => Promise<R>,
+    options?: { concurrency?: number; stopOnError?: boolean },
+  ): Promise<(R | undefined)[]> {
+    if (items.length === 0) {
+      return [];
+    }
+
+    const concurrency = Math.min(
+      options?.concurrency || this.config.maxPoolSize || 10,
+      items.length,
+    );
+    const stopOnError = options?.stopOnError ?? false;
+
+    // Pre-acquire sessions
+    const sessions: Session[] = [];
+    try {
+      for (let i = 0; i < concurrency; i++) {
+        sessions.push(await this.getSession());
+      }
+    } catch (error) {
+      for (const session of sessions) {
+        this.releaseSession(session);
+      }
+      throw error;
+    }
+
+    const results: (R | undefined)[] = new Array(items.length);
+    let itemIndex = 0;
+    let shouldStop = false;
+    const errors: { index: number; error: Error }[] = [];
+
+    try {
+      const workers = sessions.map(async (session) => {
+        while (!shouldStop && itemIndex < items.length) {
+          const idx = itemIndex++;
+          if (idx >= items.length) break;
+
+          try {
+            results[idx] = await operation(session, items[idx], idx);
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            errors.push({ index: idx, error });
+            if (stopOnError) {
+              shouldStop = true;
+              break;
+            }
+          }
+        }
+      });
+
+      await Promise.all(workers);
+    } finally {
+      for (const session of sessions) {
+        this.releaseSession(session);
+      }
+    }
+
+    if (errors.length > 0 && stopOnError) {
+      throw errors[0].error;
+    }
+
+    return results;
   }
 }

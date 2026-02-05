@@ -310,4 +310,74 @@ describe("SessionPool E2E Tests", () => {
     expect(stats.active).toBe(pool.activeCount);
     expect(stats.waiting).toBe(pool.waitingCount);
   });
+
+  test("Should insert multiple tablets concurrently using insertTabletsParallel", async () => {
+    if (!isConnected) {
+      console.log("Skipping test - no IoTDB connection");
+      return;
+    }
+
+    // Create multiple tablets for different devices
+    const tablets = [];
+    const baseTime = Date.now();
+    
+    for (let i = 0; i < 10; i++) {
+      tablets.push({
+        deviceId: `root.test.parallel_device${i}`,
+        measurements: ["temperature", "humidity"],
+        dataTypes: [TSDataType.FLOAT, TSDataType.FLOAT],
+        timestamps: [baseTime + i * 1000],
+        values: [[25.5 + i, 60.0 + i]],
+      });
+    }
+
+    // Insert tablets concurrently
+    await pool.insertTabletsParallel(tablets, { concurrency: 5 });
+
+    // Verify data was inserted by querying one device
+    const dataSet = await pool.executeQueryStatement(
+      "SELECT * FROM root.test.parallel_device0"
+    );
+    let rowCount = 0;
+    while (await dataSet.hasNext()) {
+      dataSet.next();
+      rowCount++;
+    }
+    await dataSet.close();
+
+    expect(rowCount).toBeGreaterThan(0);
+  });
+
+  test("Should execute multiple operations in parallel using executeParallel", async () => {
+    if (!isConnected) {
+      console.log("Skipping test - no IoTDB connection");
+      return;
+    }
+
+    const deviceNames = ["exec_d1", "exec_d2", "exec_d3"];
+    
+    // Create timeseries in parallel
+    const results = await pool.executeParallel(
+      deviceNames,
+      async (session, deviceName) => {
+        try {
+          await session.executeNonQueryStatement(
+            `CREATE TIMESERIES root.test.${deviceName}.value WITH DATATYPE=FLOAT`
+          );
+        } catch (e: any) {
+          // Ignore if already exists
+          if (!e.message.includes("already exists") && !e.message.includes("already exist")) {
+            throw e;
+          }
+        }
+        return deviceName;
+      },
+      { concurrency: 3 }
+    );
+
+    expect(results).toHaveLength(3);
+    expect(results).toContain("exec_d1");
+    expect(results).toContain("exec_d2");
+    expect(results).toContain("exec_d3");
+  });
 });

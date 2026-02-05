@@ -130,6 +130,49 @@ async function main() {
     // Comprehensive statistics
     const stats = pool.getPoolStats();
     console.log("\nComprehensive stats:", stats);
+
+    // Approach 3: Concurrent batch insertion (NEW API)
+    console.log("\n--- Approach 3: Concurrent batch insertion (insertTabletsParallel) ---");
+    const tablets = [];
+    const batchTime = Date.now();
+    
+    for (let i = 0; i < 20; i++) {
+      tablets.push({
+        deviceId: `root.pool_example.batch_sensor${i}`,
+        measurements: ["value"],
+        dataTypes: [TSDataType.FLOAT],
+        timestamps: [batchTime + i * 1000],
+        values: [[100.0 + i]],
+      });
+    }
+
+    console.log(`Inserting ${tablets.length} tablets concurrently...`);
+    const startTime = Date.now();
+    await pool.insertTabletsParallel(tablets, { concurrency: 5 });
+    const elapsed = Date.now() - startTime;
+    console.log(`Inserted ${tablets.length} tablets in ${elapsed}ms (${(tablets.length * 1000 / elapsed).toFixed(2)} tablets/sec)`);
+
+    // Approach 4: Generic parallel execution (NEW API)
+    console.log("\n--- Approach 4: Generic parallel execution (executeParallel) ---");
+    const deviceNames = ["parallel_d1", "parallel_d2", "parallel_d3", "parallel_d4"];
+    
+    console.log(`Creating ${deviceNames.length} timeseries in parallel...`);
+    const results = await pool.executeParallel(
+      deviceNames,
+      async (session, deviceName) => {
+        try {
+          await session.executeNonQueryStatement(
+            `CREATE TIMESERIES root.pool_example.${deviceName}.value WITH DATATYPE=FLOAT`
+          );
+        } catch {
+          // Ignore if already exists
+        }
+        return `Created ${deviceName}`;
+      },
+      { concurrency: 4 }
+    );
+    console.log("Results:", results);
+
   } catch (error) {
     console.error("Error:", error);
   } finally {
