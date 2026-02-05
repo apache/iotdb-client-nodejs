@@ -302,20 +302,21 @@ export class SessionDataSet {
   /**
    * Convert all remaining rows to a columnar format for high-performance processing.
    * This is inspired by pg nodejs client's array mode.
-   * 
+   *
    * Returns data in columnar format: { timestamps: number[], values: any[][] }
    * where values[columnIndex][rowIndex] gives the value.
-   * 
+   *
    * This is much more efficient than row-by-row processing when you need to
    * process large result sets, as it:
    * - Eliminates RowRecord object allocation (zero object overhead)
    * - Enables vectorized processing
    * - Reduces GC pressure by 80-90%
-   * 
-   * WARNING: This loads ALL remaining rows into memory. Only use for:
-   * - Small result sets (< 100K rows)
-   * - When you need columnar data format for processing
-   * 
+   *
+   * WARNING: This loads rows into memory up to maxRows limit.
+   *
+   * @param options.maxRows Maximum rows to load (default: 100000). Set to 0 for unlimited.
+   * @returns Columnar data with truncated flag indicating if more rows exist
+   *
    * For large result sets, use hasNext()/next() iterator pattern instead.
    * 
    * @returns Columnar data structure with timestamps and column values
@@ -338,20 +339,28 @@ export class SessionDataSet {
    * await dataSet.close();
    * ```
    */
-  async toColumnar(): Promise<{ 
-    timestamps: number[]; 
+  async toColumnar(options?: { maxRows?: number }): Promise<{
+    timestamps: number[];
     values: any[][];
     columnNames: string[];
     columnTypes: string[];
+    truncated: boolean;
   }> {
+    const maxRows = options?.maxRows ?? 100000; // Default 100K limit, 0 = unlimited
     const timestamps: number[] = [];
     const columnCount = this.columnNames.length;
     const values: any[][] = Array.from({ length: columnCount }, () => []);
+    let rowCount = 0;
 
-    // Process all remaining rows
+    // Process rows up to maxRows limit
     while (await this.hasNext()) {
+      if (maxRows > 0 && rowCount >= maxRows) {
+        break;
+      }
+
       const row = this.currentRows[this.currentRowIndex];
       this.currentRowIndex++;
+      rowCount++;
 
       if (this.ignoreTimeStamp) {
         // Aggregation query: no timestamp, all fields
@@ -368,11 +377,19 @@ export class SessionDataSet {
       }
     }
 
+    const truncated = maxRows > 0 && rowCount >= maxRows && (await this.hasNext());
+    if (truncated) {
+      logger.warn(
+        `toColumnar() truncated at ${maxRows} rows. Use iterator pattern for larger datasets or increase maxRows.`
+      );
+    }
+
     return {
       timestamps,
       values,
       columnNames: this.columnNames,
       columnTypes: this.columnTypes,
+      truncated,
     };
   }
 

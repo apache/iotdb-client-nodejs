@@ -231,9 +231,9 @@ export abstract class BaseSessionPool {
     const startTime = Date.now();
 
     // Try to get an idle session (O(1) operation)
-    if (this.idleSessions.length > 0) {
-      const pooledSession = this.idleSessions.shift()!;
-
+    // Use atomic shift() with null check to avoid race condition
+    const pooledSession = this.idleSessions.shift();
+    if (pooledSession) {
       // Verify session is still open
       if (pooledSession.session.isOpen()) {
         this.activeSessions.add(pooledSession);
@@ -595,8 +595,8 @@ export abstract class BaseSessionPool {
       throw error;
     }
 
-    // Track errors but don't fail fast - continue processing other tablets
-    const errors: Error[] = [];
+    // Track errors with indices for debugging - don't fail fast
+    const errors: { index: number; error: Error }[] = [];
     let tabletIndex = 0;
 
     try {
@@ -610,7 +610,10 @@ export abstract class BaseSessionPool {
           try {
             await session.insertTablet(tablet);
           } catch (err) {
-            errors.push(err instanceof Error ? err : new Error(String(err)));
+            errors.push({
+              index: idx,
+              error: err instanceof Error ? err : new Error(String(err)),
+            });
           }
         }
       });
@@ -630,10 +633,21 @@ export abstract class BaseSessionPool {
       `[PERF] Pool insertTabletsParallel COMPLETE: ${totalDuration}ms, ${throughput.toFixed(2)} tablets/sec`,
     );
 
-    // If there were errors, throw an aggregate error
+    // If there were errors, throw an aggregate error with details
     if (errors.length > 0) {
-      const errorMsg = `${errors.length} of ${tablets.length} tablet inserts failed. First error: ${errors[0].message}`;
-      throw new Error(errorMsg);
+      const failedIndices = errors.map((e) => e.index);
+      const errorDetails = errors
+        .slice(0, 5)
+        .map((e) => `[${e.index}]: ${e.error.message}`)
+        .join('; ');
+      const suffix = errors.length > 5 ? ` ... and ${errors.length - 5} more` : '';
+      const aggregateError = new Error(
+        `${errors.length} of ${tablets.length} tablet inserts failed. ` +
+        `Failed indices: [${failedIndices.join(', ')}]. Errors: ${errorDetails}${suffix}`
+      ) as Error & { failedIndices: number[]; errors: Error[] };
+      aggregateError.failedIndices = failedIndices;
+      aggregateError.errors = errors.map((e) => e.error);
+      throw aggregateError;
     }
   }
 

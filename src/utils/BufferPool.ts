@@ -64,35 +64,41 @@ export class BufferPool {
   /**
    * Get a buffer of at least the requested size
    * Returns a pooled buffer if available, otherwise allocates new
+   * @throws Error if buffer allocation fails (e.g., out of memory)
    */
   acquire(minSize: number): Buffer {
     // Find appropriate size class
     const sizeClass = this.getSizeClass(minSize);
-    
-    if (sizeClass === null) {
-      // Size too large for pooling, allocate directly
-      this.stats.misses++;
-      this.stats.allocations++;
-      return Buffer.allocUnsafe(minSize);
-    }
 
-    const pool = this.pools.get(sizeClass);
-    if (!pool) {
-      this.stats.misses++;
-      this.stats.allocations++;
-      return Buffer.allocUnsafe(sizeClass);
-    }
+    try {
+      if (sizeClass === null) {
+        // Size too large for pooling, allocate directly
+        this.stats.misses++;
+        this.stats.allocations++;
+        return Buffer.allocUnsafe(minSize);
+      }
 
-    const buffer = pool.pop();
-    if (buffer) {
-      this.stats.hits++;
-      // Return the full buffer from the pool (will be sized to sizeClass)
-      // The caller is responsible for using only minSize bytes
-      return buffer.subarray(0, minSize);
-    } else {
-      this.stats.misses++;
-      this.stats.allocations++;
-      return Buffer.allocUnsafe(sizeClass);
+      const pool = this.pools.get(sizeClass);
+      if (!pool) {
+        this.stats.misses++;
+        this.stats.allocations++;
+        return Buffer.allocUnsafe(sizeClass);
+      }
+
+      const buffer = pool.pop();
+      if (buffer) {
+        this.stats.hits++;
+        // Return the full buffer from the pool (will be sized to sizeClass)
+        // The caller is responsible for using only minSize bytes
+        return buffer.subarray(0, minSize);
+      } else {
+        this.stats.misses++;
+        this.stats.allocations++;
+        return Buffer.allocUnsafe(sizeClass);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Buffer allocation failed for size ${minSize}: ${message}`);
     }
   }
 
