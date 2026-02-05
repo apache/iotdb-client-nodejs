@@ -488,10 +488,144 @@ async function runBenchmark(
   return metrics.getStats();
 }
 
+/**
+ * Execute batch insert operations using insertTabletsParallel
+ * This is optimized for high throughput by pre-acquiring sessions
+ * and distributing tablets across workers.
+ *
+ * @param {Object} pool - IoTDB session pool
+ * @param {Array} tablets - Array of tablet objects ready for insertion
+ * @param {number} concurrency - Number of concurrent workers
+ * @param {MetricsCollector} metrics - Metrics collector
+ * @returns {Promise<void>}
+ */
+async function executeBatchInsert(pool, tablets, concurrency, metrics) {
+  const batchSize = Math.ceil(tablets.length / Math.ceil(tablets.length / 100)); // ~100 tablets per batch
+  const batches = [];
+
+  for (let i = 0; i < tablets.length; i += batchSize) {
+    batches.push(tablets.slice(i, i + batchSize));
+  }
+
+  console.log(`[Batch Insert] ${tablets.length} tablets in ${batches.length} batches, concurrency: ${concurrency}`);
+
+  const actualConcurrency = Math.min(concurrency, batches.length);
+
+  // Pre-acquire sessions
+  const sessions = await Promise.all(
+    Array.from({ length: actualConcurrency }, () => pool.getSession()),
+  );
+
+  console.log(`[Batch Insert] Pre-acquired ${sessions.length} sessions`);
+
+  let batchIndex = 0;
+
+  try {
+    const workers = sessions.map(async (session) => {
+      while (batchIndex < batches.length) {
+        const idx = batchIndex++;
+        if (idx >= batches.length) break;
+
+        const batch = batches[idx];
+        const startTime = performance.now();
+
+        try {
+          // Insert all tablets in this batch sequentially using the same session
+          for (const tablet of batch) {
+            await session.insertTablet(tablet);
+          }
+          const latency = performance.now() - startTime;
+          // Calculate total data points in this batch
+          const dataPoints = batch.reduce((sum, t) => {
+            const rows = t.timestamps.length;
+            const cols = t.measurements?.length || t.columnNames?.length || 0;
+            return sum + rows * cols;
+          }, 0);
+          metrics.recordOperation(latency, dataPoints, true);
+        } catch (error) {
+          const latency = performance.now() - startTime;
+          metrics.recordOperation(latency, 0, false, error);
+        }
+      }
+    });
+
+    await Promise.all(workers);
+  } finally {
+    for (const session of sessions) {
+      pool.releaseSession(session);
+    }
+    console.log(`[Batch Insert] Released ${sessions.length} sessions`);
+  }
+}
+
+/**
+ * Run benchmark using batch insert mode (optimized for high throughput)
+ * @param {Object} pool - IoTDB session pool
+ * @param {Array} tablets - Pre-built tablet array
+ * @param {Object} config - Configuration
+ * @returns {Object} Test results
+ */
+async function runBatchBenchmark(pool, tablets, config) {
+  console.log("\n" + "=".repeat(80));
+  console.log("STARTING BATCH BENCHMARK TEST");
+  console.log("=".repeat(80));
+
+  const metrics = new MetricsCollector(config);
+  const reporter = new ProgressReporter(config, metrics);
+
+  console.log(`\nTotal tablets to insert: ${tablets.length}`);
+
+  // Warmup phase
+  if (config.WARMUP_ROUNDS > 0) {
+    console.log(
+      `\n[Warmup Phase] Running ${config.WARMUP_ROUNDS} warmup rounds...`,
+    );
+    const warmupTablets = tablets.slice(0, Math.min(20, tablets.length));
+    for (let round = 0; round < config.WARMUP_ROUNDS; round++) {
+      const warmupMetrics = new MetricsCollector(config);
+      warmupMetrics.start();
+
+      await executeBatchInsert(
+        pool,
+        warmupTablets,
+        Math.min(config.CLIENT_NUMBER, 2),
+        warmupMetrics,
+      );
+
+      warmupMetrics.end();
+      console.log(
+        `  Warmup round ${round + 1}/${config.WARMUP_ROUNDS} completed`,
+      );
+    }
+  }
+
+  // Main test phase
+  console.log(
+    `\n[Test Phase] Running batch benchmark with ${config.CLIENT_NUMBER} concurrent clients...`,
+  );
+
+  metrics.start();
+  reporter.start();
+
+  try {
+    await executeBatchInsert(pool, tablets, config.CLIENT_NUMBER, metrics);
+  } finally {
+    reporter.stop();
+    metrics.end();
+  }
+
+  // Print results
+  metrics.printStats("Batch Benchmark Results");
+
+  return metrics.getStats();
+}
+
 module.exports = {
   MetricsCollector,
   ProgressReporter,
   executeConcurrent,
   executeConcurrentWithBinding,
+  executeBatchInsert,
   runBenchmark,
+  runBatchBenchmark,
 };

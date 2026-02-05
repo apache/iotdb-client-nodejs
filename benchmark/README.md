@@ -6,22 +6,26 @@ Comprehensive performance testing tools for Apache IoTDB Node.js client, inspire
 
 This benchmark suite provides specialized tools for testing IoTDB write performance:
 
-- **Tree Model Benchmark** (`benchmark-tree.js`) - Tests timeseries data model using `insertTablet` API
-- **Table Model Benchmark** (`benchmark-table.js`) - Tests relational data model using `insertTablet` API
-- **Tree API Comparison** (`benchmark-comparison.js`) - Compares different insertion methods (tree model)
-- **Table API Comparison** (`benchmark-table-comparison.js`) - Compares different insertion methods (table model)
+- **Tree Model Benchmark** (`benchmark-tree.js`) - Tests timeseries data model
+- **Table Model Benchmark** (`benchmark-table.js`) - Tests relational data model
+- **Multi-Process Cluster** (`benchmark-table-cluster.js`) - **NEW** Multi-process mode for maximum throughput
+- **API Comparison** (`benchmark-comparison.js`, `benchmark-table-comparison.js`) - Compare insertion methods
+
+### Performance Summary
+
+| Mode | Configuration | Throughput | Notes |
+|------|---------------|------------|-------|
+| Single Process | 20 clients, 200 devices | 4.28M pts/s | Best single-process |
+| **Multi-Process** | **8 workers × 10 clients** | **5.42M pts/s** | **Recommended** |
+| Java iot-benchmark | Similar config | ~60M pts/s | Reference |
 
 ### Key Features
 
-✅ **Pre-generated Test Data** - Eliminates data generation overhead during testing  
-✅ **Memory-Optimized** - Shared batch templates support 100K+ devices without OOM  
-✅ **Pre-registered Metadata** - Avoids metadata creation impact on write performance  
-✅ **Flexible Configuration** - Extensive parameters for customizing test scenarios  
-✅ **Concurrent Testing** - Simulates multiple clients with configurable concurrency  
-✅ **Detailed Metrics** - Comprehensive performance statistics including latency percentiles  
-✅ **Progress Monitoring** - Real-time progress reporting during long tests  
-✅ **Multi-node Support** - Tests against IoTDB clusters with load balancing  
-✅ **API Comparison** - Compare sequential, batch, and parallel insertion methods
+✅ **Multi-Process Cluster Mode** - Overcomes Node.js single-thread limitation
+✅ **Pre-generated Test Data** - Eliminates data generation overhead
+✅ **Memory-Optimized** - Streaming batch processing for large-scale tests
+✅ **Flexible Configuration** - Extensive parameters for customizing scenarios
+✅ **Detailed Metrics** - Comprehensive statistics including latency percentiles
 
 ## Quick Start
 
@@ -113,6 +117,35 @@ node benchmark/benchmark-table.js
 # With custom parameters
 DEVICE_NUMBER=50 CLIENT_NUMBER=5 node benchmark/benchmark-table.js
 ```
+
+### Run Multi-Process Cluster Benchmark (Recommended for Maximum Throughput)
+
+```bash
+# Best configuration (5.42M pts/s)
+IOTDB_HOST=localhost \
+WORKER_COUNT=8 \
+CLIENT_NUMBER=10 \
+DEVICE_NUMBER=1000 \
+SENSOR_NUMBER=50 \
+LOOP=100 \
+BATCH_SIZE_PER_WRITE=500 \
+POOL_MAX_SIZE=10 \
+node benchmark/benchmark-table-cluster.js
+```
+
+**Multi-Process Parameters:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORKER_COUNT` | CPU cores | Number of worker processes |
+| `CLIENT_NUMBER` | `10` | Concurrent clients per worker |
+| `DEVICE_NUMBER` | `1000` | Total devices (distributed across workers) |
+| `POOL_MAX_SIZE` | `10` | Connection pool size per worker |
+
+**Performance Tips:**
+- 8 workers is optimal for most servers; more workers may cause saturation
+- Tablet size ~25K points (500 rows × 50 sensors) gives best latency/throughput balance
+- Each worker runs independent SessionPool for true parallel execution
 
 ## Configuration
 

@@ -19,14 +19,14 @@
  */
 
 /**
- * Tree Model Benchmark
- * 
+ * Tree Model Benchmark (Optimized with insertTabletsParallel)
+ *
  * Performance benchmark for IoTDB tree model (timeseries model).
- * Tests write operations using insertTablet API with pre-generated data.
- * 
+ * Uses optimized batch insert with pre-acquired sessions for maximum throughput.
+ *
  * Usage:
  *   node benchmark-tree.js [options]
- * 
+ *
  * Environment Variables:
  *   IOTDB_HOST              - IoTDB host (default: localhost)
  *   IOTDB_PORT              - IoTDB port (default: 6667)
@@ -34,7 +34,7 @@
  *   DEVICE_NUMBER           - Number of devices (default: 100)
  *   SENSOR_NUMBER           - Sensors per device (default: 10)
  *   BATCH_SIZE_PER_WRITE    - Batch size (default: 100)
- *   TOTAL_DATA_POINTS       - Total data points (default: 100000)
+ *   LOOP                    - Number of loops (default: calculated from TOTAL_DATA_POINTS)
  *   REGENERATE_DATA         - Force regenerate data (default: false)
  */
 
@@ -42,7 +42,7 @@ const { SessionPool } = require('../dist');
 const { createConfig, printConfig } = require('./config');
 const { prepareTestData } = require('./data-generator');
 const { createTreeModelSchema, cleanupSchema } = require('./schema-manager');
-const { runBenchmark } = require('./benchmark-core');
+const { runBatchBenchmark } = require('./benchmark-core');
 
 /**
  * Create session pool for tree model
@@ -75,78 +75,31 @@ function createSessionPool(config) {
 }
 
 /**
- * Generate workload for tree model (loop-based)
+ * Build tablets for a single loop iteration (memory efficient)
  * @param {Object} testData - Test data structure
  * @param {Object} config - Configuration object
- * @returns {Array} Workload array
+ * @param {number} loopIdx - Current loop index
+ * @returns {Array} Array of tablet objects for this loop
  */
-function generateWorkload(testData, config) {
-  const workload = [];
-  
-  if (config.LOOP !== null) {
-    // Loop-based execution: each loop writes one batch for all devices
-    for (let loopIdx = 0; loopIdx < config.LOOP; loopIdx++) {
-      for (const device of testData.devices) {
-        // Use shared batch template (same for all devices)
-        const batch = testData.sharedBatches[0];
-        workload.push({
-          deviceId: device.deviceId,
-          measurements: device.measurements,
-          dataTypes: device.dataTypes,
-          timestamps: batch.timestamps,
-          values: batch.values,
-          loopIndex: loopIdx,
-        });
-      }
-    }
-  } else {
-    // Legacy mode: all batches for all devices
-    for (const device of testData.devices) {
-      for (let batchIdx = 0; batchIdx < device.batchCount; batchIdx++) {
-        const batch = testData.sharedBatches[batchIdx];
-        workload.push({
-          deviceId: device.deviceId,
-          measurements: device.measurements,
-          dataTypes: device.dataTypes,
-          timestamps: batch.timestamps,
-          values: batch.values,
-        });
-      }
-    }
-  }
-  
-  return workload;
-}
+function buildTabletsForLoop(testData, config, loopIdx) {
+  const tablets = [];
+  const baseTimestamp = Date.now() + loopIdx * config.BATCH_SIZE_PER_WRITE * config.POINT_STEP;
+  const batch = testData.sharedBatches[0];
 
-/**
- * Execute write operation for tree model
- * @param {SessionPool} pool - Session pool
- * @param {Object} work - Work item
- * @param {Object} session - Optional bound session for device-session binding
- * @returns {number} Number of data points written
- */
-async function executeWrite(pool, work, session = null) {
-  // Update timestamps to current time
-  const now = Date.now();
-  const updatedTimestamps = work.timestamps.map((offset) => now + offset);
-  
-  const tablet = {
-    deviceId: work.deviceId,
-    measurements: work.measurements,
-    dataTypes: work.dataTypes,
-    timestamps: updatedTimestamps,
-    values: work.values,
-  };
-  
-  // Use bound session if provided, otherwise use pool
-  if (session) {
-    await session.insertTablet(tablet);
-  } else {
-    await pool.insertTablet(tablet);
+  for (const device of testData.devices) {
+    // Update timestamps for this loop iteration
+    const updatedTimestamps = batch.timestamps.map((offset) => baseTimestamp + offset);
+
+    tablets.push({
+      deviceId: device.deviceId,
+      measurements: device.measurements,
+      dataTypes: device.dataTypes,
+      timestamps: updatedTimestamps,
+      values: batch.values,
+    });
   }
-  
-  // Return number of data points written
-  return work.timestamps.length * work.measurements.length;
+
+  return tablets;
 }
 
 /**
@@ -154,7 +107,7 @@ async function executeWrite(pool, work, session = null) {
  */
 async function main() {
   console.log('╔════════════════════════════════════════════════════════════════════════════╗');
-  console.log('║                     IoTDB Tree Model Benchmark                            ║');
+  console.log('║           IoTDB Tree Model Benchmark (Optimized Batch Insert)             ║');
   console.log('╚════════════════════════════════════════════════════════════════════════════╝');
   console.log();
 
@@ -182,15 +135,9 @@ async function main() {
     await createTreeModelSchema(pool, testData, config);
     console.log('✓ Schema creation completed');
 
-    // Step 4: Run benchmark
-    console.log('\nStep 4: Running benchmark...');
-    const results = await runBenchmark(
-      pool,
-      testData,
-      config,
-      executeWrite,
-      generateWorkload
-    );
+    // Step 4: Run streaming batch benchmark
+    console.log('\nStep 4: Running streaming batch benchmark...');
+    const results = await runStreamingBenchmark(pool, testData, config);
 
     // Step 5: Summary
     console.log('\n' + '='.repeat(80));
@@ -202,11 +149,6 @@ async function main() {
     console.log(`  • Throughput:          ${parseFloat(results.points_per_sec).toLocaleString()} points/sec`);
     console.log(`  • Average Latency:     ${results.latency.avg}ms`);
     console.log(`  • Test Duration:       ${results.duration_sec}s`);
-
-    // Optional: Cleanup schema (comment out if you want to keep the data)
-    // console.log('\nCleaning up schema...');
-    // await cleanupSchema(pool, 'tree', config);
-    // console.log('✓ Schema cleanup completed');
 
   } catch (error) {
     console.error('\n' + '!'.repeat(80));
@@ -223,6 +165,128 @@ async function main() {
       console.log('✓ Session pool closed');
     }
   }
+}
+
+/**
+ * Run streaming benchmark - process tablets loop by loop to avoid memory issues
+ * @param {Object} pool - Session pool
+ * @param {Object} testData - Test data
+ * @param {Object} config - Configuration
+ * @returns {Object} Benchmark results
+ */
+async function runStreamingBenchmark(pool, testData, config) {
+  const { MetricsCollector, ProgressReporter } = require('./benchmark-core');
+  const { performance } = require('perf_hooks');
+
+  console.log("\n" + "=".repeat(80));
+  console.log("STARTING STREAMING BATCH BENCHMARK");
+  console.log("=".repeat(80));
+
+  const loopCount = config.LOOP !== null ? config.LOOP : 1;
+  const totalTablets = loopCount * testData.devices.length;
+  console.log(`\nTotal: ${loopCount} loops × ${testData.devices.length} devices = ${totalTablets} tablets`);
+  console.log(`Data points per tablet: ${config.BATCH_SIZE_PER_WRITE} rows × ${config.SENSOR_NUMBER} sensors = ${config.BATCH_SIZE_PER_WRITE * config.SENSOR_NUMBER}`);
+
+  const metrics = new MetricsCollector(config);
+  const reporter = new ProgressReporter(config, metrics);
+
+  // Warmup phase
+  if (config.WARMUP_ROUNDS > 0) {
+    console.log(`\n[Warmup Phase] Running ${config.WARMUP_ROUNDS} warmup rounds...`);
+    for (let round = 0; round < config.WARMUP_ROUNDS; round++) {
+      const warmupTablets = buildTabletsForLoop(testData, config, 0);
+      const warmupMetrics = new MetricsCollector(config);
+      warmupMetrics.start();
+
+      // Pre-acquire sessions for warmup
+      const warmupConcurrency = Math.min(config.CLIENT_NUMBER, 2);
+      const warmupSessions = [];
+      for (let i = 0; i < warmupConcurrency; i++) {
+        warmupSessions.push(await pool.getSession());
+      }
+
+      try {
+        let idx = 0;
+        const workers = warmupSessions.map(async (session) => {
+          while (idx < Math.min(10, warmupTablets.length)) {
+            const i = idx++;
+            if (i >= warmupTablets.length) break;
+            try {
+              await session.insertTablet(warmupTablets[i]);
+            } catch (e) { /* ignore warmup errors */ }
+          }
+        });
+        await Promise.all(workers);
+      } finally {
+        for (const session of warmupSessions) {
+          pool.releaseSession(session);
+        }
+      }
+
+      warmupMetrics.end();
+      console.log(`  Warmup round ${round + 1}/${config.WARMUP_ROUNDS} completed`);
+    }
+  }
+
+  // Pre-acquire sessions for main test
+  const concurrency = Math.min(config.CLIENT_NUMBER, config.POOL_MAX_SIZE);
+  const sessions = [];
+  for (let i = 0; i < concurrency; i++) {
+    sessions.push(await pool.getSession());
+  }
+  console.log(`\n[Test Phase] Pre-acquired ${sessions.length} sessions for ${concurrency} concurrent workers`);
+
+  metrics.start();
+  reporter.start();
+
+  try {
+    // Process loop by loop to avoid memory issues
+    for (let loopIdx = 0; loopIdx < loopCount; loopIdx++) {
+      // Build tablets for this loop only
+      const tablets = buildTabletsForLoop(testData, config, loopIdx);
+
+      // Insert tablets using pre-acquired sessions
+      let tabletIndex = 0;
+      const workers = sessions.map(async (session) => {
+        while (tabletIndex < tablets.length) {
+          const idx = tabletIndex++;
+          if (idx >= tablets.length) break;
+
+          const tablet = tablets[idx];
+          const startTime = performance.now();
+
+          try {
+            await session.insertTablet(tablet);
+            const latency = performance.now() - startTime;
+            const dataPoints = tablet.timestamps.length * tablet.measurements.length;
+            metrics.recordOperation(latency, dataPoints, true);
+          } catch (error) {
+            const latency = performance.now() - startTime;
+            metrics.recordOperation(latency, 0, false, error);
+          }
+        }
+      });
+
+      await Promise.all(workers);
+
+      // Reset tablet index for next loop
+      // tablets array will be garbage collected
+    }
+  } finally {
+    reporter.stop();
+    metrics.end();
+
+    // Release all sessions
+    for (const session of sessions) {
+      pool.releaseSession(session);
+    }
+    console.log(`[Test Phase] Released ${sessions.length} sessions`);
+  }
+
+  // Print results
+  metrics.printStats("Streaming Batch Benchmark Results");
+
+  return metrics.getStats();
 }
 
 // Run benchmark

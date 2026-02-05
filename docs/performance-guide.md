@@ -2,13 +2,52 @@
 
 ## Overview
 
-This document describes the performance optimizations implemented in the IoTDB Node.js client, inspired by the high-performance design of the pg (node-postgres) client.
+This document describes the performance optimizations implemented in the IoTDB Node.js client.
 
-## Background
+## Performance Benchmarks (2026)
 
-The problem statement referenced that the pg nodejs client claims to be 8.5 times faster than Java implementations, while the original IoTDB client implementation had significantly lower performance. This led to a comprehensive performance optimization initiative.
+### Write Performance - Multi-Process Cluster Mode
 
-## Implemented Optimizations (Phase 1)
+| Configuration | Workers | Clients/Worker | Throughput | Avg Latency |
+|---------------|---------|----------------|------------|-------------|
+| **Best Config** | **8** | **10** | **5.42M pts/s** | **329ms** |
+| Single Process | 1 | 20 | 4.28M pts/s | 107ms |
+| Over-parallel | 10 | 10 | 3.81M pts/s | 551ms |
+
+**Best Configuration:**
+```bash
+WORKER_COUNT=8 CLIENT_NUMBER=10 DEVICE_NUMBER=1000 \
+SENSOR_NUMBER=50 BATCH_SIZE_PER_WRITE=500 POOL_MAX_SIZE=10 \
+node benchmark/benchmark-table-cluster.js
+```
+
+### Node.js vs Java Performance
+
+| Client | Max Throughput | Architecture |
+|--------|----------------|--------------|
+| Node.js (multi-process) | ~5.5M pts/s | 8 workers × event loop |
+| Java iot-benchmark | ~60M pts/s | Multi-threaded |
+
+**Gap Analysis (~11x):**
+- Node.js single-threaded architecture limits true parallelism
+- Java Thrift implementation has JIT optimization
+- Java can use DirectByteBuffer for zero-copy
+
+### Key Optimization Findings
+
+1. **Tablet Size**: 25K points (500 rows × 50 sensors) is optimal
+   - Larger tablets (100K) cause latency spikes (3.5s)
+   - Smaller tablets increase RPC overhead
+
+2. **Worker Count**: 8 workers is optimal for most servers
+   - 10+ workers cause server saturation
+   - Each worker needs independent SessionPool
+
+3. **Memory Management**: Use streaming batch processing
+   - Build tablets per-loop, not all upfront
+   - Prevents OOM for large-scale tests (billions of points)
+
+## Implemented Optimizations
 
 ### 1. Buffer Pooling
 
