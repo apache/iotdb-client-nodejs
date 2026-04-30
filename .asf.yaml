@@ -20,7 +20,6 @@
 github:
   description: "Apache IoTDB Client for Node.js"
   homepage: https://iotdb.apache.org/
-  default_branch: develop
   labels:
     - timeseries
     - database
