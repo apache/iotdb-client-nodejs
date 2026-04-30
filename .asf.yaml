@@ -35,6 +35,3 @@ github:
     squash: true
     merge: false
     rebase: true
-notifications:
-  issues: reviews@iotdb.apache.org
-  pullrequests: reviews@iotdb.apache.org
