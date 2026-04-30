@@ -10,7 +10,7 @@ Apache IoTDB Node.js client library providing Session, SessionPool, and TableSes
 
 ```bash
 npm install              # Install dependencies
-npm run build            # Full build (esbuild + tsc + copy:thrift)
+npm run build            # Full build (esbuild + tsc declarations + copy:thrift)
 npm run lint             # Run ESLint
 npm run lint:fix         # Fix lint issues
 npm run format           # Format with Prettier
@@ -29,6 +29,9 @@ npm run test:e2e         # E2E tests (requires IoTDB instance)
 ```bash
 # Start single node
 docker-compose -f docker-compose-1c1d.yml up -d
+
+# Or 1 ConfigNode + 3 DataNodes
+docker-compose -f docker-compose-1c3d.yml up -d
 
 # Or 3-node cluster
 docker-compose -f docker-compose-3c3d.yml up -d
@@ -64,7 +67,8 @@ Three-layer design: **Connection** → **Session** → **Pool**
 
 **Key files**:
 
-- `src/client/Session.ts` - Single connection session
+- `src/client/Session.ts` - Single connection session (tree model)
+- `src/client/TableSession.ts` - Single connection session (table model)
 - `src/client/BaseSessionPool.ts` - Abstract pool with common logic
 - `src/client/SessionPool.ts` - Tree model pool (sql_dialect='tree')
 - `src/client/TableSessionPool.ts` - Table model pool (sql_dialect='table')
@@ -162,59 +166,3 @@ Tests run sequentially (`maxWorkers: 1`) to avoid database conflicts.
 2. **Pool vs Session**: Session uses first node; Pool does round-robin across all nodes
 3. **SessionDataSet**: Always call `close()` or resources leak on server
 4. **Test isolation**: Tests share database names (`root.test`), run sequentially
-
-# 📁 文件修改规则
-
-<FILE_MODIFICATION_RULE>
-
-## 核心原则
-
-Write 单次 < 150 行，Edit 单次 < 50 行，超过必须分块
-
-## ⚠️ API 限制适配（重要）
-
-由于 API 代理服务器对输出长度有限制，禁止一次性写入大文件。
-
-Task 子代理使用同一 API，同样受限，所以分块写入是唯一解决方案。
-
-## 分块写入流程
-
-| 步骤 | 操作           | 限制         |
-| ---- | -------------- | ------------ |
-| 1    | Write 创建骨架 | < 100 行     |
-| 2    | Edit 逐步添加  | 每次 < 50 行 |
-| 3    | Read 验证      | 确认完整性   |
-
-## 各类型文件的骨架示例
-
-| 文件类型 | 骨架内容                       |
-| -------- | ------------------------------ |
-| 代码     | import + 类/函数签名（空实现） |
-| Markdown | 标题 + 章节占位符              |
-| JSON     | 基础结构 {} + 顶层 key         |
-| YAML     | 顶层 key + 空值                |
-| 配置     | 最小必需配置                   |
-
-## 判断标准
-
-| 操作     | 行数     | 方法                   |
-| -------- | -------- | ---------------------- |
-| 创建文件 | < 150 行 | Write 一次完成         |
-| 创建文件 | > 150 行 | 分块：骨架 + 多次 Edit |
-| 修改文件 | < 50 行  | Edit 一次完成          |
-| 修改文件 | > 50 行  | 分多次 Edit            |
-
-## 失败处理
-
-```Plain
-Write/Edit 失败 → 不要重试相同内容 → 改用更小的分块
-```
-
-### ❌ 禁止行为
-
-- 禁止 Write 超过 150 行
-- 禁止 Edit 超过 50 行
-- 禁止重复尝试失败的工具
-- 禁止使用 heredoc 写代码（特殊字符会失败）
-
-</FILE_MODIFICATION_RULE>
