@@ -43,7 +43,7 @@ IoTDB 中的树模型采用分层组织数据:
 ### 2.1 从 npm 安装
 
 ```bash
-npm install iotdb-client-nodejs
+npm install @iotdb/client
 ```
 
 **系统要求:**
@@ -54,12 +54,12 @@ npm install iotdb-client-nodejs
 
 **TypeScript:**
 ```typescript
-import { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } from 'iotdb-client-nodejs';
+import { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } from '@iotdb/client';
 ```
 
 **JavaScript:**
 ```javascript
-const { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } = require('iotdb-client-nodejs');
+const { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } = require('@iotdb/client');
 ```
 
 ## 3. 快速入门
@@ -67,7 +67,7 @@ const { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } = require('iotd
 ### 3.1 SessionPool 示例
 
 ```typescript
-import { SessionPool, TreeTablet } from 'iotdb-client-nodejs';
+import { SessionPool, TreeTablet } from '@iotdb/client';
 
 async function quickStart() {
   // 创建并初始化连接池
@@ -164,7 +164,7 @@ const pool = new SessionPool({
 #### 方式 3: 使用构建器模式(推荐)
 
 ```typescript
-import { PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { PoolConfigBuilder } from '@iotdb/client';
 
 const pool = new SessionPool(
   new PoolConfigBuilder()
@@ -392,7 +392,7 @@ await pool.insertTablet({
 ### 7.1 完整的 CRUD 示例
 
 ```typescript
-import { SessionPool } from 'iotdb-client-nodejs';
+import { SessionPool } from '@iotdb/client';
 
 async function crudExample() {
   const pool = new SessionPool('localhost', 6667, {
@@ -446,7 +446,7 @@ crudExample();
 ### 7.2 多节点 SessionPool 示例
 
 ```typescript
-import { SessionPool, PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { SessionPool, PoolConfigBuilder } from '@iotdb/client';
 
 async function multiNodeExample() {
   const pool = new SessionPool(
@@ -674,7 +674,7 @@ FATAL ERROR: Reached heap limit
 process.env.LOG_LEVEL = 'debug';
 
 // 或直接使用 logger
-import { logger } from 'iotdb-client-nodejs';
+import { logger } from '@iotdb/client';
 logger.setLevel('debug');
 ```
 
@@ -703,7 +703,7 @@ console.log(`Query took ${Date.now() - start}ms`);
 ### 9.4 获取帮助
 
 - **文档**: [IoTDB Docs](https://iotdb.apache.org/)
-- **GitHub Issues**: [报告问题](https://github.com/CritasWang/iotdb-client-nodejs/issues)
+- **GitHub Issues**: [报告问题](https://github.com/CritasWang/@iotdb/client/issues)
 - **邮件列表**: dev@iotdb.apache.org
 
 ## 附录 A: 完整类型参考

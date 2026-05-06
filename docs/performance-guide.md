@@ -56,7 +56,7 @@ node benchmark/benchmark-table-cluster.js
 **Solution**: Implemented `BufferPool` with size-based pooling strategy:
 
 ```typescript
-import { globalBufferPool } from 'iotdb-client-nodejs';
+import { globalBufferPool } from '@iotdb/client';
 
 // Buffer pool automatically manages buffers in 7 size classes:
 // 1KB, 4KB, 16KB, 64KB, 256KB, 1MB, 4MB
@@ -178,7 +178,7 @@ const avgTemp = columnar.values[0].reduce((a, b) => a + b) / columnar.values[0].
 ### Enabling/Disabling Fast Serialization
 
 ```typescript
-import { Session } from 'iotdb-client-nodejs';
+import { Session } from '@iotdb/client';
 
 // Enable (default)
 const session = new Session({
@@ -285,7 +285,7 @@ await largeDataSet.close();
 ### 4. Monitor Buffer Pool Usage
 
 ```typescript
-import { globalBufferPool } from 'iotdb-client-nodejs';
+import { globalBufferPool } from '@iotdb/client';
 
 // After warmup period
 setInterval(() => {
@@ -319,7 +319,7 @@ setInterval(() => {
 
 ```typescript
 // Clear buffer pool periodically in long-running processes
-import { globalBufferPool } from 'iotdb-client-nodejs';
+import { globalBufferPool } from '@iotdb/client';
 
 // Clear pool every hour to prevent potential memory bloat
 setInterval(() => {

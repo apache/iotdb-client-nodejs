@@ -51,4 +51,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example code for common use cases
 - Apache License 2.0
 
-[0.1.0]: https://github.com/CritasWang/iotdb-client-nodejs/releases/tag/v0.1.0
+[0.1.0]: https://github.com/CritasWang/@iotdb/client/releases/tag/v0.1.0

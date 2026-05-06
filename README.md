@@ -1,8 +1,8 @@
 # Apache IoTDB Node.js Client
 
 [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
-[![npm version](https://img.shields.io/npm/v/iotdb-client-nodejs.svg)](https://www.npmjs.com/package/iotdb-client-nodejs)
-[![Node.js Version](https://img.shields.io/node/v/iotdb-client-nodejs.svg)](https://nodejs.org/)
+[![npm version](https://img.shields.io/npm/v/@iotdb/client.svg)](https://www.npmjs.com/package/@iotdb/client)
+[![Node.js Version](https://img.shields.io/node/v/@iotdb/client.svg)](https://nodejs.org/)
 
 A Node.js client for Apache IoTDB with support for SessionPool and TableSessionPool, providing efficient connection management and comprehensive query capabilities.
 
@@ -45,7 +45,7 @@ The Apache IoTDB Node.js Client is a high-performance, feature-rich client libra
 ## Installation
 
 ```bash
-npm install iotdb-client-nodejs
+npm install @iotdb/client
 ```
 
 ## Requirements
@@ -58,7 +58,7 @@ npm install iotdb-client-nodejs
 ### Basic Session Usage
 
 ```typescript
-import { Session } from 'iotdb-client-nodejs';
+import { Session } from '@iotdb/client';
 
 const session = new Session({
   host: 'localhost',
@@ -110,7 +110,7 @@ await session.close();
 The Builder pattern provides a more elegant and fluent API for configuration:
 
 ```typescript
-import { Session, ConfigBuilder } from 'iotdb-client-nodejs';
+import { Session, ConfigBuilder } from '@iotdb/client';
 
 // Build a session configuration
 const session = new Session(
@@ -134,7 +134,7 @@ await session.close();
 The `executeQueryStatement()` method returns a SessionDataSet for efficient iteration through query results:
 
 ```typescript
-import { Session, SessionDataSet, RowRecord } from 'iotdb-client-nodejs';
+import { Session, SessionDataSet, RowRecord } from '@iotdb/client';
 
 const session = new Session({
   host: 'localhost',
@@ -182,7 +182,7 @@ See [SessionDataSet Guide](docs/sessiondataset-guide.md) for complete documentat
 ### SessionPool Usage
 
 ```typescript
-import { SessionPool } from 'iotdb-client-nodejs';
+import { SessionPool } from '@iotdb/client';
 
 const pool = new SessionPool('localhost', 6667, {
   username: 'root',
@@ -263,7 +263,7 @@ await pool.close();
 For more control, you can explicitly get and release sessions from the pool:
 
 ```typescript
-import { SessionPool } from 'iotdb-client-nodejs';
+import { SessionPool } from '@iotdb/client';
 
 const pool = new SessionPool('localhost', 6667, {
   username: 'root',
@@ -304,7 +304,7 @@ For high-throughput scenarios, use the concurrent APIs optimized for Node.js:
 Insert multiple tablets in a single RPC call (most efficient for tree model):
 
 ```typescript
-import { Session, TreeTablet, TSDataType } from 'iotdb-client-nodejs';
+import { Session, TreeTablet, TSDataType } from '@iotdb/client';
 
 const session = new Session({ host: 'localhost', port: 6667 });
 await session.open();
@@ -332,7 +332,7 @@ await session.close();
 Use pool-level concurrent insertion for maximum throughput:
 
 ```typescript
-import { SessionPool } from 'iotdb-client-nodejs';
+import { SessionPool } from '@iotdb/client';
 
 const pool = new SessionPool({
   host: 'localhost',
@@ -357,7 +357,7 @@ await pool.close();
 Execute any operations in parallel using the pool:
 
 ```typescript
-import { SessionPool } from 'iotdb-client-nodejs';
+import { SessionPool } from '@iotdb/client';
 
 const pool = new SessionPool({ host: 'localhost', port: 6667, maxPoolSize: 10 });
 await pool.init();
@@ -386,7 +386,7 @@ await pool.close();
 Standalone utilities for concurrent execution:
 
 ```typescript
-import { executeConcurrent, chunkArray, createSemaphore } from 'iotdb-client-nodejs';
+import { executeConcurrent, chunkArray, createSemaphore } from '@iotdb/client';
 
 // Execute any async operations with controlled concurrency
 const result = await executeConcurrent(
@@ -416,7 +416,7 @@ try {
 When nodes have different host:port combinations, use the `nodeUrls` configuration with string array format:
 
 ```typescript
-import { SessionPool, PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { SessionPool, PoolConfigBuilder } from '@iotdb/client';
 
 // Using config object with string array (RECOMMENDED)
 const pool1 = new SessionPool({
@@ -472,7 +472,7 @@ const pool = new SessionPool({
 When all nodes share the same port:
 
 ```typescript
-import { SessionPool } from 'iotdb-client-nodejs';
+import { SessionPool } from '@iotdb/client';
 
 const pool = new SessionPool(
   ['node1.example.com', 'node2.example.com', 'node3.example.com'],
@@ -491,7 +491,7 @@ await pool.init();
 ### SSL/TLS Support
 
 ```typescript
-import { Session } from 'iotdb-client-nodejs';
+import { Session } from '@iotdb/client';
 import * as fs from 'fs';
 
 const session = new Session({
@@ -514,7 +514,7 @@ await session.open();
 ### TableSessionPool Usage
 
 ```typescript
-import { TableSessionPool } from 'iotdb-client-nodejs';
+import { TableSessionPool } from '@iotdb/client';
 
 const tablePool = new TableSessionPool('localhost', 6667, {
   username: 'root',
@@ -551,7 +551,7 @@ The client now supports automatic write redirection for multi-node IoTDB cluster
 **Configuration:**
 
 ```typescript
-import { SessionPool, TableSessionPool } from 'iotdb-client-nodejs';
+import { SessionPool, TableSessionPool } from '@iotdb/client';
 
 // Tree model pool with redirection
 const treePool = new SessionPool({
@@ -626,7 +626,7 @@ See [docs/redirection-design.md](docs/redirection-design.md) for detailed design
 Fluent API for building Session configurations:
 
 ```typescript
-import { ConfigBuilder } from 'iotdb-client-nodejs';
+import { ConfigBuilder } from '@iotdb/client';
 
 const config = new ConfigBuilder()
   .host('localhost')
@@ -658,7 +658,7 @@ const config = new ConfigBuilder()
 Fluent API for building SessionPool configurations (extends ConfigBuilder):
 
 ```typescript
-import { PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { PoolConfigBuilder } from '@iotdb/client';
 
 const config = new PoolConfigBuilder()
   .host('localhost')
@@ -817,7 +817,7 @@ interface ITreeTablet {
 
 **Class (with helper methods):**
 ```typescript
-import { TreeTablet, TSDataType } from 'iotdb-client-nodejs';
+import { TreeTablet, TSDataType } from '@iotdb/client';
 
 // Create a tablet
 const tablet = new TreeTablet(
@@ -869,7 +869,7 @@ enum ColumnCategory {
 
 **Class (with helper methods):**
 ```typescript
-import { TableTablet, ColumnCategory, TSDataType } from 'iotdb-client-nodejs';
+import { TableTablet, ColumnCategory, TSDataType } from '@iotdb/client';
 
 // Create a tablet
 const tablet = new TableTablet(
@@ -994,7 +994,7 @@ const session = new Session({
 
 **New way** (more fluent):
 ```typescript
-import { ConfigBuilder } from 'iotdb-client-nodejs';
+import { ConfigBuilder } from '@iotdb/client';
 
 const session = new Session(
   new ConfigBuilder()
@@ -1221,8 +1221,8 @@ const session = new Session(
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/CritasWang/iotdb-client-nodejs.git
-cd iotdb-client-nodejs
+git clone https://github.com/CritasWang/@iotdb/client.git
+cd @iotdb/client
 ```
 
 2. Install dependencies:
@@ -1750,7 +1750,7 @@ npm version 1.2.0-beta.1 --no-git-tag-version
 npm publish --tag beta
 
 # Install beta version
-npm install iotdb-client-nodejs@beta
+npm install @iotdb/client@beta
 ```
 
 ### Hotfix Process

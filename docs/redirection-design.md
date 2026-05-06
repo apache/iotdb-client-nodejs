@@ -443,8 +443,8 @@ docker-compose -f docker-compose-1c3d.yml down
 ## Usage Example
 
 ```typescript
-import { SessionPool } from 'iotdb-client-nodejs';
-import { TSDataType } from 'iotdb-client-nodejs';
+import { SessionPool } from '@iotdb/client';
+import { TSDataType } from '@iotdb/client';
 
 // Create pool with redirection enabled
 const pool = new SessionPool({

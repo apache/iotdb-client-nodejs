@@ -34,7 +34,7 @@ The `TIME` category exists to match the Java and C# client implementations. Howe
 ## Correct Usage Example
 
 ```typescript
-import { TableSessionPool, ColumnCategory, TSDataType } from 'iotdb-client-nodejs';
+import { TableSessionPool, ColumnCategory, TSDataType } from '@iotdb/client';
 
 await pool.insertTablet({
   tableName: 'sensor_data',

@@ -1,5 +1,8 @@
 {
-  "name": "iotdb-client-nodejs",
+  "name": "@iotdb/client",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "0.1.0",
   "description": "Apache IoTDB Node.js client with SessionPool and TableSessionPool support",
   "main": "dist/index.js",

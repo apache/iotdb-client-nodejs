@@ -1,8 +1,8 @@
 # Apache IoTDB Node.js 客户端
 
 [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
-[![npm version](https://img.shields.io/npm/v/iotdb-client-nodejs.svg)](https://www.npmjs.com/package/iotdb-client-nodejs)
-[![Node.js Version](https://img.shields.io/node/v/iotdb-client-nodejs.svg)](https://nodejs.org/)
+[![npm version](https://img.shields.io/npm/v/@iotdb/client.svg)](https://www.npmjs.com/package/@iotdb/client)
+[![Node.js Version](https://img.shields.io/node/v/@iotdb/client.svg)](https://nodejs.org/)
 
 用于 Apache IoTDB 的 Node.js 客户端，支持 SessionPool 和 TableSessionPool，提供高效的连接管理和全面的查询功能。
 
@@ -43,7 +43,7 @@ Apache IoTDB Node.js 客户端是一个高性能、功能丰富的客户端库�
 ## 安装
 
 ```bash
-npm install iotdb-client-nodejs
+npm install @iotdb/client
 ```
 
 ## 环境要求
@@ -56,7 +56,7 @@ npm install iotdb-client-nodejs
 ### 基本会话使用
 
 ```typescript
-import { Session } from 'iotdb-client-nodejs';
+import { Session } from '@iotdb/client';
 
 const session = new Session({
   host: 'localhost',
@@ -103,7 +103,7 @@ await session.close();
 构建器模式提供更优雅和流畅的配置 API：
 
 ```typescript
-import { Session, ConfigBuilder } from 'iotdb-client-nodejs';
+import { Session, ConfigBuilder } from '@iotdb/client';
 
 // 构建会话配置
 const session = new Session(
@@ -125,7 +125,7 @@ await session.close();
 ### SessionPool 使用
 
 ```typescript
-import { SessionPool } from 'iotdb-client-nodejs';
+import { SessionPool } from '@iotdb/client';
 
 const pool = new SessionPool('localhost', 6667, {
   username: 'root',
@@ -169,7 +169,7 @@ await pool.close();
 当节点具有不同的 host:port 组合时，使用字符串数组格式的 `nodeUrls` 配置：
 
 ```typescript
-import { SessionPool, PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { SessionPool, PoolConfigBuilder } from '@iotdb/client';
 
 // 使用字符串数组的配置对象（推荐）
 const pool1 = new SessionPool({
@@ -206,7 +206,7 @@ await pool1.init();
 ### SSL/TLS 支持
 
 ```typescript
-import { Session } from 'iotdb-client-nodejs';
+import { Session } from '@iotdb/client';
 import * as fs from 'fs';
 
 const session = new Session({
@@ -229,7 +229,7 @@ await session.open();
 ### TableSessionPool 使用
 
 ```typescript
-import { TableSessionPool } from 'iotdb-client-nodejs';
+import { TableSessionPool } from '@iotdb/client';
 
 const tablePool = new TableSessionPool('localhost', 6667, {
   username: 'root',
@@ -396,7 +396,7 @@ IoTDB Node.js 客户端采用三层架构设计，针对单会话和高并发场
 **配置：**
 
 ```typescript
-import { SessionPool, TableSessionPool } from 'iotdb-client-nodejs';
+import { SessionPool, TableSessionPool } from '@iotdb/client';
 
 // 带重定向的树模型连接池
 const treePool = new SessionPool({
@@ -471,7 +471,7 @@ MULTI_NODE=true npm run test:e2e
 用于构建 Session 配置的流式 API：
 
 ```typescript
-import { ConfigBuilder } from 'iotdb-client-nodejs';
+import { ConfigBuilder } from '@iotdb/client';
 
 const config = new ConfigBuilder()
   .host('localhost')
@@ -503,7 +503,7 @@ const config = new ConfigBuilder()
 用于构建 SessionPool 配置的流式 API（扩展 ConfigBuilder）：
 
 ```typescript
-import { PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { PoolConfigBuilder } from '@iotdb/client';
 
 const config = new PoolConfigBuilder()
   .host('localhost')
@@ -623,8 +623,8 @@ new SessionPool(new PoolConfigBuilder()...build())
 
 1. 克隆仓库：
 ```bash
-git clone https://github.com/CritasWang/iotdb-client-nodejs.git
-cd iotdb-client-nodejs
+git clone https://github.com/CritasWang/@iotdb/client.git
+cd @iotdb/client
 ```
 
 2. 安装依赖：
@@ -1140,7 +1140,7 @@ npm version 1.2.0-beta.1 --no-git-tag-version
 npm publish --tag beta
 
 # 安装 beta 版本
-npm install iotdb-client-nodejs@beta
+npm install @iotdb/client@beta
 ```
 
 ### 热修复流程
