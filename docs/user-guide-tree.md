@@ -43,7 +43,7 @@ The tree model in IoTDB organizes data hierarchically:
 ### 2.1 Install from npm
 
 ```bash
-npm install iotdb-client-nodejs
+npm install @iotdb/client
 ```
 
 **Requirements:**
@@ -54,12 +54,12 @@ npm install iotdb-client-nodejs
 
 **TypeScript:**
 ```typescript
-import { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } from 'iotdb-client-nodejs';
+import { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } from '@iotdb/client';
 ```
 
 **JavaScript:**
 ```javascript
-const { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } = require('iotdb-client-nodejs');
+const { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } = require('@iotdb/client');
 ```
 
 ## 3. Quick Start
@@ -67,7 +67,7 @@ const { SessionPool, PoolConfigBuilder, TreeTablet, TSDataType } = require('iotd
 ### 3.1 SessionPool Example
 
 ```typescript
-import { SessionPool, TreeTablet } from 'iotdb-client-nodejs';
+import { SessionPool, TreeTablet } from '@iotdb/client';
 
 async function quickStart() {
   // Create and initialize pool
@@ -164,7 +164,7 @@ const pool = new SessionPool({
 #### Option 3: Using Builder Pattern (Recommended)
 
 ```typescript
-import { PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { PoolConfigBuilder } from '@iotdb/client';
 
 const pool = new SessionPool(
   new PoolConfigBuilder()
@@ -392,7 +392,7 @@ await pool.insertTablet({
 ### 7.1 Complete CRUD Example
 
 ```typescript
-import { SessionPool } from 'iotdb-client-nodejs';
+import { SessionPool } from '@iotdb/client';
 
 async function crudExample() {
   const pool = new SessionPool('localhost', 6667, {
@@ -446,7 +446,7 @@ crudExample();
 ### 7.2 Multi-Node SessionPool Example
 
 ```typescript
-import { SessionPool, PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { SessionPool, PoolConfigBuilder } from '@iotdb/client';
 
 async function multiNodeExample() {
   const pool = new SessionPool(
@@ -674,7 +674,7 @@ FATAL ERROR: Reached heap limit
 process.env.LOG_LEVEL = 'debug';
 
 // Or use logger directly
-import { logger } from 'iotdb-client-nodejs';
+import { logger } from '@iotdb/client';
 logger.setLevel('debug');
 ```
 
@@ -703,7 +703,7 @@ console.log(`Query took ${Date.now() - start}ms`);
 ### 9.4 Getting Help
 
 - **Documentation**: [IoTDB Docs](https://iotdb.apache.org/)
-- **GitHub Issues**: [Report bugs](https://github.com/CritasWang/iotdb-client-nodejs/issues)
+- **GitHub Issues**: [Report bugs](https://github.com/CritasWang/@iotdb/client/issues)
 - **Mailing List**: dev@iotdb.apache.org
 
 ## Appendix A: Complete Type Reference

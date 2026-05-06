@@ -54,7 +54,7 @@ IoTDB 中的表模型采用关系格式组织数据:
 ### 2.1 从 npm 安装
 
 ```bash
-npm install iotdb-client-nodejs
+npm install @iotdb/client
 ```
 
 **系统要求:**
@@ -65,12 +65,12 @@ npm install iotdb-client-nodejs
 
 **TypeScript:**
 ```typescript
-import { TableSessionPool, PoolConfigBuilder, TableTablet, ColumnCategory, TSDataType } from 'iotdb-client-nodejs';
+import { TableSessionPool, PoolConfigBuilder, TableTablet, ColumnCategory, TSDataType } from '@iotdb/client';
 ```
 
 **JavaScript:**
 ```javascript
-const { TableSessionPool, PoolConfigBuilder, TableTablet, ColumnCategory, TSDataType } = require('iotdb-client-nodejs');
+const { TableSessionPool, PoolConfigBuilder, TableTablet, ColumnCategory, TSDataType } = require('@iotdb/client');
 ```
 
 ## 3. 快速入门
@@ -78,7 +78,7 @@ const { TableSessionPool, PoolConfigBuilder, TableTablet, ColumnCategory, TSData
 ### 3.1 基础 TableSessionPool 示例
 
 ```typescript
-import { TableSessionPool, TableTablet, ColumnCategory } from 'iotdb-client-nodejs';
+import { TableSessionPool, TableTablet, ColumnCategory } from '@iotdb/client';
 
 async function quickStart() {
   // 创建并初始化表 session 连接池
@@ -224,7 +224,7 @@ const pool = new TableSessionPool({
 #### 方式 3: 使用构建器模式(推荐)
 
 ```typescript
-import { PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { PoolConfigBuilder } from '@iotdb/client';
 
 const pool = new TableSessionPool(
   new PoolConfigBuilder()
@@ -378,7 +378,7 @@ enum ColumnCategory {
 
 **TableTablet 类 (带辅助方法 - 推荐):**
 ```typescript
-import { TableTablet, ColumnCategory, TSDataType } from 'iotdb-client-nodejs';
+import { TableTablet, ColumnCategory, TSDataType } from '@iotdb/client';
 
 // 创建 tablet
 const tablet = new TableTablet(
@@ -399,7 +399,7 @@ await pool.insertTablet(tablet);
 
 **替代方案: 普通对象方法 (仍支持):**
 ```typescript
-import { ColumnCategory, TSDataType } from 'iotdb-client-nodejs';
+import { ColumnCategory, TSDataType } from '@iotdb/client';
 
 await pool.insertTablet({
   tableName: 'sensor_data',
@@ -548,7 +548,7 @@ await pool.insertTablet({
 ### 7.1 完整的数据库和表设置
 
 ```typescript
-import { TableSessionPool, PoolConfigBuilder } from 'iotdb-client-nodejs';
+import { TableSessionPool, PoolConfigBuilder } from '@iotdb/client';
 
 async function setupDatabase() {
   const pool = new TableSessionPool(
@@ -1022,7 +1022,7 @@ console.log(`Returned ${rowCount} rows`);
 ### 9.4 获取帮助
 
 - **文档**: [IoTDB Table Model Docs](https://iotdb.apache.org/)
-- **GitHub Issues**: [报告问题](https://github.com/CritasWang/iotdb-client-nodejs/issues)
+- **GitHub Issues**: [报告问题](https://github.com/CritasWang/@iotdb/client/issues)
 - **社区**: dev@iotdb.apache.org
 
 ## 附录 A: 完整 API 参考

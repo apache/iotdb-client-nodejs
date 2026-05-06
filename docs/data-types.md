@@ -35,7 +35,7 @@ Type definitions are based on:
 ### Creating Timeseries
 
 ```typescript
-import { Session } from 'iotdb-client-nodejs';
+import { Session } from '@iotdb/client';
 
 const session = new Session({
   host: 'localhost',

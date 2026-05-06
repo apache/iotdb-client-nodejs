@@ -16,7 +16,7 @@ The SessionDataSet provides an iterator-based approach to reading query results,
 ### Simple Iteration
 
 ```typescript
-import { Session } from 'iotdb-client-nodejs';
+import { Session } from '@iotdb/client';
 
 const session = new Session({
   host: 'localhost',

@@ -15,8 +15,8 @@ Thank you for your interest in contributing to the Apache IoTDB Node.js client!
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/CritasWang/iotdb-client-nodejs.git
-cd iotdb-client-nodejs
+git clone https://github.com/CritasWang/@iotdb/client.git
+cd @iotdb/client
 ```
 
 2. Install dependencies:
