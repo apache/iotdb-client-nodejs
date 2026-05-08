@@ -36,7 +36,7 @@
   "license": "Apache-2.0",
   "dependencies": {
     "denque": "^2.1.0",
-    "thrift": "^0.22.0"
+    "thrift": "^0.23.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",
