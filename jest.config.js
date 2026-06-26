@@ -4,6 +4,13 @@ module.exports = {
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
+  // thrift@0.23 pulls in uuid@13, which ships ESM-only (type: "module").
+  // ts-jest must compile it to CommonJS, so allow .js transforms and stop
+  // ignoring the uuid package under node_modules.
+  transform: {
+    '^.+\\.[tj]s$': ['ts-jest', { tsconfig: { allowJs: true } }],
+  },
+  transformIgnorePatterns: ['/node_modules/(?!uuid/)'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
