@@ -2,9 +2,9 @@ name: E2E Tests (1C3D)
 
 on:
   push:
-    branches: [ main, dev/* ]
+    branches: [ develop, dev/* ]
   pull_request:
-    branches: [ main ]
+    branches: [ develop ]
 
 jobs:
   e2e-1c3d:
