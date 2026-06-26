@@ -1,0 +1,132 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+jest.mock("thrift", () => {
+  const actualThrift = jest.requireActual("thrift");
+
+  const mockConnection = {
+    on: jest.fn(),
+    removeAllListeners: jest.fn(),
+    destroy: jest.fn(),
+    end: jest.fn(),
+  };
+
+  return {
+    ...actualThrift,
+    __mockConnection: mockConnection,
+    createConnection: jest.fn(() => mockConnection),
+    createSSLConnection: jest.fn(() => mockConnection),
+    createClient: jest.fn(() => ({
+      openSession: jest.fn((_req, callback) =>
+        callback(null, { status: { code: 200 }, sessionId: 123 }),
+      ),
+      requestStatementId: jest.fn((_sessionId, callback) =>
+        callback(null, 456),
+      ),
+      closeSession: jest.fn((_req, callback) =>
+        callback(null, { status: { code: 200 } }),
+      ),
+    })),
+  };
+});
+
+import * as thrift from "thrift";
+import { Connection } from "../../src/connection/Connection";
+import { InternalConfig } from "../../src/utils/Config";
+
+const thriftMock = thrift as typeof thrift & {
+  __mockConnection: {
+    on: jest.Mock;
+    removeAllListeners: jest.Mock;
+    destroy: jest.Mock;
+    end: jest.Mock;
+  };
+  createConnection: jest.Mock;
+  createSSLConnection: jest.Mock;
+  createClient: jest.Mock;
+};
+
+describe("Connection", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test("Should use SSL connection when SSL is enabled", async () => {
+    const ca = Buffer.from("ca");
+    const config: InternalConfig = {
+      host: "localhost",
+      port: 6667,
+      username: "root",
+      password: "root",
+      enableSSL: true,
+      sqlDialect: "tree",
+      sslOptions: {
+        ca,
+        rejectUnauthorized: true,
+      },
+    };
+
+    const connection = new Connection(config);
+
+    await connection.open();
+
+    expect(thriftMock.createSSLConnection).toHaveBeenCalledWith(
+      "localhost",
+      6667,
+      expect.objectContaining({
+        ca,
+        rejectUnauthorized: true,
+        https: true,
+        protocol: thrift.TBinaryProtocol,
+        transport: thrift.TFramedTransport,
+      }),
+    );
+    expect(thriftMock.createConnection).not.toHaveBeenCalled();
+
+    await connection.close();
+  });
+
+  test("Should use plain connection when SSL is disabled", async () => {
+    const config: InternalConfig = {
+      host: "localhost",
+      port: 6667,
+      username: "root",
+      password: "root",
+      enableSSL: false,
+      sqlDialect: "tree",
+    };
+
+    const connection = new Connection(config);
+
+    await connection.open();
+
+    expect(thriftMock.createConnection).toHaveBeenCalledWith(
+      "localhost",
+      6667,
+      expect.objectContaining({
+        https: false,
+        protocol: thrift.TBinaryProtocol,
+        transport: thrift.TFramedTransport,
+      }),
+    );
+    expect(thriftMock.createSSLConnection).not.toHaveBeenCalled();
+
+    await connection.close();
+  });
+});

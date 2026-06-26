@@ -56,8 +56,8 @@ export class Connection {
         ...this.config.sslOptions,
       };
 
-      if (this.config.enableSSL && this.config.sslOptions) {
-        this.connection = thrift.createConnection(
+      if (this.config.enableSSL) {
+        this.connection = thrift.createSSLConnection(
           this.config.host,
           this.config.port,
           {
