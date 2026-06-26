@@ -156,12 +156,17 @@ describe("Redirection E2E Tests", () => {
         "root.test_redirect.device5",
       ];
 
-      for (const deviceId of devices) {
+      const baseTime = Date.now();
+      for (const [index, deviceId] of devices.entries()) {
         const tablet = {
           deviceId,
           measurements: ["temperature", "humidity"],
           dataTypes: [TSDataType.FLOAT, TSDataType.FLOAT],
-          timestamps: [Date.now()],
+          // Offset each device's timestamp so the fast write loop cannot
+          // assign the same millisecond to two devices. Tree-model queries
+          // align rows by timestamp, so colliding timestamps would merge
+          // rows and make the row count fall short of the device count.
+          timestamps: [baseTime + index],
           values: [[25.5 + Math.random() * 5, 60.0 + Math.random() * 10]],
         };
 
