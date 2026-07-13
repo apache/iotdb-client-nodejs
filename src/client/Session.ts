@@ -35,6 +35,7 @@ import {
   serializeTimestamps 
 } from "../utils/FastSerializer";
 import { globalBufferPool } from "../utils/BufferPool";
+import { parseDateToInt, parseIntToDate } from "../utils/DataTypes";
 
 const ttypes = require("../thrift/generated/client_types");
 
@@ -741,18 +742,11 @@ export class Session {
         return buffer;
       }
       case 9: {
-        // DATE (stored as INT32 - days since epoch) - Use big-endian
+        // DATE (stored as INT32 - yyyyMMdd, e.g. 20240101) - Use big-endian
         const buffer = Buffer.alloc(values.length * 4);
         values.forEach((v, i) => {
-          let days = 0;
-          if (v !== null && v !== undefined) {
-            if (v instanceof Date) {
-              days = Math.floor(v.getTime() / (24 * 60 * 60 * 1000));
-            } else {
-              days = v;
-            }
-          }
-          buffer.writeInt32BE(days, i * 4);
+          const encoded = v === null || v === undefined ? 0 : parseDateToInt(v);
+          buffer.writeInt32BE(encoded, i * 4);
         });
         return buffer;
       }
@@ -1019,6 +1013,23 @@ export class Session {
       logger.debug(
         `TsBlock: read column ${i}, type=${dataType}, encoding=${encoding}, ${column.values.length} values`,
       );
+    }
+
+    // DATE columns arrive in TsBlock with wire type INT32 (1); the real DATE
+    // type is only present in the query metadata. Convert those columns'
+    // yyyyMMdd integers (e.g. 20240101) to Date objects here.
+    for (let i = 0; i < valueColumns.length; i++) {
+      if (
+        valueColumnTypes[i] === 1 &&
+        this.getDataTypeCode(dataTypes[i]) === 9
+      ) {
+        const colValues = valueColumns[i].values;
+        for (let j = 0; j < colValues.length; j++) {
+          if (colValues[j] !== null) {
+            colValues[j] = parseIntToDate(colValues[j]);
+          }
+        }
+      }
     }
 
     // Build rows from columns
@@ -1313,15 +1324,14 @@ export class Session {
           break;
         }
         case 9: {
-          // DATE (stored as INT32 - days since epoch) - TSQueryDataSet uses BIG ENDIAN
+          // DATE (stored as INT32 - yyyyMMdd) - TSQueryDataSet uses BIG ENDIAN
           for (let i = 0; i < rowCount; i++) {
             if (this.isNull(bitmap, i)) {
               values.push(null);
             } else {
-              // Convert days since epoch to Date object
-              const days = buffer.readInt32BE(i * 4);
-              const date = new Date(days * 24 * 60 * 60 * 1000);
-              values.push(date);
+              // Convert yyyyMMdd integer to Date object
+              const encoded = buffer.readInt32BE(i * 4);
+              values.push(parseIntToDate(encoded));
             }
           }
           break;

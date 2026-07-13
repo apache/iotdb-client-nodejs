@@ -155,17 +155,23 @@ describe("FastSerializer", () => {
   });
 
   describe("DATE Serialization", () => {
-    it("should serialize DATE values correctly", () => {
+    it("should serialize DATE values as INT32 yyyyMMdd", () => {
       const date1 = new Date("2024-01-01");
-      const days1 = Math.floor(date1.getTime() / (24 * 60 * 60 * 1000));
-      const values = [date1, 100, null, undefined];
+      const values = [date1, 20241231, null, undefined];
       const buffer = serializeDateColumn(values);
 
       expect(buffer.length).toBe(16); // 4 * 4 bytes
-      expect(buffer.readInt32BE(0)).toBe(days1);
-      expect(buffer.readInt32BE(4)).toBe(100);
+      expect(buffer.readInt32BE(0)).toBe(20240101); // yyyyMMdd, NOT days since epoch
+      expect(buffer.readInt32BE(4)).toBe(20241231); // numbers pass through unchanged
       expect(buffer.readInt32BE(8)).toBe(0); // null -> 0
       expect(buffer.readInt32BE(12)).toBe(0); // undefined -> 0
+    });
+
+    it("should produce exact wire bytes for 2026-07-13", () => {
+      // IoTDB DATE wire format: INT32 yyyyMMdd, big-endian
+      // 20260713 = 0x01352769
+      const buffer = serializeDateColumn([new Date("2026-07-13")]);
+      expect(Array.from(buffer)).toEqual([0x01, 0x35, 0x27, 0x69]);
     });
   });
 

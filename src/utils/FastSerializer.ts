@@ -18,6 +18,7 @@
  */
 
 import { globalBufferPool } from "./BufferPool";
+import { parseDateToInt } from "./DataTypes";
 
 /**
  * Fast serialization utilities for IoTDB data types
@@ -167,26 +168,19 @@ export function serializeTimestampColumn(values: any[]): Buffer {
 }
 
 /**
- * Serialize DATE column (4 bytes per value, days since epoch)
+ * Serialize DATE column (4 bytes per value, INT32 yyyyMMdd encoding)
  * Optimized: Single buffer allocation with direct writes
  */
 export function serializeDateColumn(values: any[]): Buffer {
   const size = values.length * 4;
   const buffer = size >= 1024 ? globalBufferPool.acquire(size) : Buffer.allocUnsafe(size);
-  
+
   for (let i = 0; i < values.length; i++) {
     const v = values[i];
-    let days = 0;
-    if (v !== null && v !== undefined) {
-      if (v instanceof Date) {
-        days = Math.floor(v.getTime() / (24 * 60 * 60 * 1000));
-      } else {
-        days = v;
-      }
-    }
-    buffer.writeInt32BE(days, i * 4);
+    const encoded = v === null || v === undefined ? 0 : parseDateToInt(v);
+    buffer.writeInt32BE(encoded, i * 4);
   }
-  
+
   return buffer.subarray(0, size);
 }
 

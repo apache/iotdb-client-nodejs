@@ -77,8 +77,8 @@ export enum TSDataType {
 
   /**
    * Date with day precision (no time component)
-   * JavaScript type: Date or number (days since epoch)
-   * Storage size: 4 bytes (stored as INT32)
+   * JavaScript type: Date or number (yyyyMMdd integer, e.g. 20240101)
+   * Storage size: 4 bytes (stored as INT32, encoded as year*10000 + month*100 + day)
    */
   DATE = 9,
 
@@ -97,6 +97,51 @@ export enum TSDataType {
   STRING = 11,
 
   // OBJECT = 12,   // Reserved - not yet implemented
+}
+
+/**
+ * Convert a JavaScript Date (or an already-encoded yyyyMMdd number) to the
+ * IoTDB DATE wire format: an INT32 encoded as year*10000 + month*100 + day
+ * (e.g. 2024-01-01 -> 20240101).
+ *
+ * This matches the Java client's DateUtils.parseDateExpressionToInt and the
+ * C# client. The calendar date is taken from the Date's UTC components,
+ * consistent with `new Date("2024-01-01")` which parses as UTC midnight.
+ *
+ * @param value - Date object or a yyyyMMdd integer (passed through unchanged)
+ * @returns The yyyyMMdd integer encoding
+ */
+export function parseDateToInt(value: Date | number): number {
+  if (value instanceof Date) {
+    return (
+      value.getUTCFullYear() * 10000 +
+      (value.getUTCMonth() + 1) * 100 +
+      value.getUTCDate()
+    );
+  }
+  return value;
+}
+
+/**
+ * Convert an IoTDB DATE wire value (INT32, year*10000 + month*100 + day)
+ * back to a JavaScript Date at UTC midnight of that calendar date.
+ *
+ * Inverse of {@link parseDateToInt}; matches the Java client's
+ * DateUtils.parseIntToDate.
+ *
+ * @param value - The yyyyMMdd integer (e.g. 20240101)
+ * @returns Date at UTC midnight of the encoded calendar date
+ */
+export function parseIntToDate(value: number): Date {
+  const year = Math.trunc(value / 10000);
+  const month = Math.trunc(value / 100) % 100;
+  const day = value % 100;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  // Date.UTC maps years 0-99 to 1900-1999; correct that explicitly
+  if (year >= 0 && year < 100) {
+    date.setUTCFullYear(year);
+  }
+  return date;
 }
 
 /**
