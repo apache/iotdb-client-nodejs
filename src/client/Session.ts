@@ -319,6 +319,7 @@ export class Session {
               response.columns?.length || 0,
               response.dataTypeList || [],
               ignoreTimeStamp,
+              response.columnIndex2TsBlockColumnIndexList,
             );
           } else if (response.queryDataSet) {
             // Old columnar format (TSQueryDataSet)
@@ -882,12 +883,16 @@ export class Session {
    * - Value columns data
    *
    * @param ignoreTimeStamp - If true, no time column is present
+   * @param columnIndex2TsBlockColumnIndexList - Server-provided mapping from
+   *   LOGICAL response column index to PHYSICAL TsBlock column index (-1 =
+   *   time column); identity mapping is assumed when absent
    */
   async parseQueryResult(
     queryResult: Buffer[],
     _columnCount: number,
     dataTypes: string[],
     ignoreTimeStamp: boolean = false,
+    columnIndex2TsBlockColumnIndexList?: number[],
   ): Promise<any[][]> {
     const rows: any[][] = [];
 
@@ -900,6 +905,14 @@ export class Session {
       `parseQueryResult: queryResult has ${queryResult.length} TsBlocks, ignoreTimeStamp=${ignoreTimeStamp}`,
     );
     logger.debug(`parseQueryResult: dataTypes: ${JSON.stringify(dataTypes)}`);
+
+    // dataTypes is ordered by LOGICAL response columns; physical TsBlock
+    // columns may be deduplicated/reordered. Derive each PHYSICAL column's
+    // logical type once so parseTsBlock can convert DATE columns correctly.
+    const physicalColumnTypes = this.derivePhysicalColumnTypes(
+      dataTypes,
+      columnIndex2TsBlockColumnIndexList,
+    );
 
     // Process each TsBlock in queryResult
     for (let blockIndex = 0; blockIndex < queryResult.length; blockIndex++) {
@@ -914,7 +927,7 @@ export class Session {
       try {
         const blockRows = this.parseTsBlock(
           tsBlockBuffer,
-          dataTypes,
+          physicalColumnTypes,
           ignoreTimeStamp,
         );
         rows.push(...blockRows);
@@ -926,6 +939,55 @@ export class Session {
 
     logger.debug(`parseQueryResult: returning ${rows.length} total rows`);
     return rows;
+  }
+
+  /**
+   * Derive the per-PHYSICAL-TsBlock-column logical data types from the
+   * logically-ordered dataTypeList and the server-provided
+   * columnIndex2TsBlockColumnIndexList (logical index -> physical index,
+   * -1 = time column).
+   *
+   * Multiple logical columns may map to the same physical column (the server
+   * deduplicates identical output columns). In practice duplicates share one
+   * type; if they ever disagree, the physical column's type is left undefined
+   * so no type-specific conversion is applied.
+   *
+   * When the mapping is absent, the logical order is the physical order
+   * (identity), preserving the previous behavior.
+   */
+  private derivePhysicalColumnTypes(
+    dataTypes: string[],
+    columnIndex2TsBlockColumnIndexList?: number[],
+  ): (string | undefined)[] {
+    if (
+      !columnIndex2TsBlockColumnIndexList ||
+      columnIndex2TsBlockColumnIndexList.length === 0
+    ) {
+      return dataTypes;
+    }
+
+    const physicalTypes: (string | undefined)[] = [];
+    const conflicting = new Set<number>();
+    for (let i = 0; i < dataTypes.length; i++) {
+      const physicalIndex = columnIndex2TsBlockColumnIndexList[i];
+      // -1 marks the time column; ignore missing/negative entries
+      if (physicalIndex === undefined || physicalIndex < 0) {
+        continue;
+      }
+      const existing = physicalTypes[physicalIndex];
+      if (existing === undefined) {
+        physicalTypes[physicalIndex] = dataTypes[i];
+      } else if (existing !== dataTypes[i]) {
+        conflicting.add(physicalIndex);
+      }
+    }
+    for (const physicalIndex of conflicting) {
+      logger.warn(
+        `derivePhysicalColumnTypes: conflicting logical types for TsBlock column ${physicalIndex}; skipping type conversion for it`,
+      );
+      physicalTypes[physicalIndex] = undefined;
+    }
+    return physicalTypes;
   }
 
   /**
@@ -941,10 +1003,14 @@ export class Session {
    * regardless of the ignoreTimeStamp setting. The ignoreTimeStamp flag only
    * affects whether the timestamp is included in the returned row data, not the
    * TsBlock binary format. This matches the behavior of iotdb-client-csharp.
+   *
+   * @param physicalColumnTypes - Logical data types ordered by PHYSICAL
+   *   TsBlock column (see derivePhysicalColumnTypes); an undefined entry means
+   *   "unknown, apply no type-specific conversion"
    */
   private parseTsBlock(
     buffer: Buffer,
-    dataTypes: string[],
+    physicalColumnTypes: (string | undefined)[],
     ignoreTimeStamp: boolean,
   ): any[][] {
     let offset = 0;
@@ -1017,11 +1083,13 @@ export class Session {
 
     // DATE columns arrive in TsBlock with wire type INT32 (1); the real DATE
     // type is only present in the query metadata. Convert those columns'
-    // yyyyMMdd integers (e.g. 20240101) to Date objects here.
+    // yyyyMMdd integers (e.g. 20240101) to Date objects here. Only convert
+    // when the physical column's logical type is unambiguously DATE.
     for (let i = 0; i < valueColumns.length; i++) {
       if (
         valueColumnTypes[i] === 1 &&
-        this.getDataTypeCode(dataTypes[i]) === 9
+        physicalColumnTypes[i] !== undefined &&
+        this.getDataTypeCode(physicalColumnTypes[i]) === 9
       ) {
         const colValues = valueColumns[i].values;
         for (let j = 0; j < colValues.length; j++) {

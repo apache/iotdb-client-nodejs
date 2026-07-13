@@ -17,7 +17,7 @@ The IoTDB Node.js client supports all standard IoTDB data types as defined in Ap
 | 6 | VECTOR | Vector data (not yet implemented) | - | - |
 | 7 | UNKNOWN | Unknown type (reserved) | - | - |
 | 8 | TIMESTAMP | Timestamp (milliseconds) | `Date` | 8 bytes |
-| 9 | DATE | Date (days since epoch) | `Date` | 4 bytes |
+| 9 | DATE | Calendar date (INT32 `yyyyMMdd`, e.g. `20240101` for 2024-01-01) | `Date` | 4 bytes |
 | 10 | BLOB | Binary data | `Buffer` | Variable (4-byte length + content) |
 | 11 | STRING | UTF-8 encoded string | `string` | Variable (4-byte length + content) |
 | 12 | OBJECT | Object type (reserved) | - | - |
@@ -176,7 +176,7 @@ for (const row of result.rows) {
 | `bigint` | INT64, TIMESTAMP | Direct mapping |
 | `string` | TEXT, STRING | UTF-8 encoded |
 | `Buffer` | BLOB | Binary data |
-| `Date` | DATE, TIMESTAMP | Converted to days or milliseconds |
+| `Date` | DATE, TIMESTAMP | DATE: encoded as `yyyyMMdd` integer (e.g. `20240101`); TIMESTAMP: milliseconds since epoch |
 
 ### IoTDB to JavaScript
 
@@ -190,7 +190,7 @@ for (const row of result.rows) {
 | TEXT | `string` | UTF-8 decoded |
 | BLOB | `Buffer` | Raw binary data |
 | STRING | `string` | UTF-8 decoded |
-| DATE | `Date` | Days since epoch converted to Date |
+| DATE | `Date` | `yyyyMMdd` integer (e.g. `20240101`) converted to Date at UTC midnight |
 | TIMESTAMP | `Date` | Milliseconds since epoch |
 
 ## Null Values

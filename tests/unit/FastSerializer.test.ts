@@ -173,6 +173,13 @@ describe("FastSerializer", () => {
       const buffer = serializeDateColumn([new Date("2026-07-13")]);
       expect(Array.from(buffer)).toEqual([0x01, 0x35, 0x27, 0x69]);
     });
+
+    it("should reject invalid DATE values", () => {
+      expect(() => serializeDateColumn([20230229])).toThrow(/Invalid DATE/); // not a leap year
+      expect(() => serializeDateColumn([new Date(NaN)])).toThrow(
+        /Invalid DATE/,
+      );
+    });
   });
 
   describe("BLOB Serialization", () => {
@@ -247,8 +254,8 @@ describe("FastSerializer", () => {
       const tsBuffer = serializeColumnFast([1000, 2000], 8);
       expect(tsBuffer.length).toBe(16);
 
-      // DATE (9)
-      const dateBuffer = serializeColumnFast([100, 200], 9);
+      // DATE (9) - values must be valid yyyyMMdd integers
+      const dateBuffer = serializeColumnFast([20240101, 20241231], 9);
       expect(dateBuffer.length).toBe(8);
 
       // BLOB (10)

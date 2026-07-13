@@ -350,7 +350,7 @@ const pool = new SessionPool(poolConfig);
 | 4 | DOUBLE | number | 64 位浮点数 |
 | 5 | TEXT | string | UTF-8 字符串 |
 | 8 | TIMESTAMP | number/Date | 自纪元以来的毫秒数 |
-| 9 | DATE | number/Date | 自纪元以来的天数 |
+| 9 | DATE | number/Date | 日历日期,`yyyyMMdd` 整数(例如 `20240101` 表示 2024-01-01)|
 | 10 | BLOB | Buffer | 二进制数据 |
 | 11 | STRING | string | 与 TEXT 相同 |
 

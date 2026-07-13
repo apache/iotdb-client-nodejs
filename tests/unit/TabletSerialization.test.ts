@@ -345,13 +345,22 @@ describe('Tablet Serialization', () => {
     test('should serialize DATE column as INT32 yyyyMMdd', () => {
       const date1 = new Date('2024-01-01');
       const date2 = new Date('2024-12-31');
-      const values = [date1, date2, 0];
+      const values = [date1, date2, 20260713];
       const buffer = (session as any).serializeColumn(values, TSDataType.DATE);
 
       expect(buffer.length).toBe(12); // 3 values * 4 bytes
       expect(buffer.readInt32BE(0)).toBe(20240101); // yyyyMMdd, NOT days since epoch
       expect(buffer.readInt32BE(4)).toBe(20241231);
-      expect(buffer.readInt32BE(8)).toBe(0);
+      expect(buffer.readInt32BE(8)).toBe(20260713); // numbers pass through unchanged
+    });
+
+    test('should reject invalid DATE values during serialization', () => {
+      expect(() =>
+        (session as any).serializeColumn([20230229], TSDataType.DATE),
+      ).toThrow(/Invalid DATE/); // 2023 is not a leap year
+      expect(() =>
+        (session as any).serializeColumn([new Date(NaN)], TSDataType.DATE),
+      ).toThrow(/Invalid DATE/);
     });
 
     test('should serialize DATE 2026-07-13 with exact wire bytes', () => {
