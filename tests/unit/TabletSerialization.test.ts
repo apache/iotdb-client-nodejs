@@ -342,18 +342,35 @@ describe('Tablet Serialization', () => {
       expect(buffer.readDoubleBE(16)).toBe(0.0);
     });
 
-    test('should serialize DATE column', () => {
+    test('should serialize DATE column as INT32 yyyyMMdd', () => {
       const date1 = new Date('2024-01-01');
       const date2 = new Date('2024-12-31');
-      const values = [date1, date2, 0];
+      const values = [date1, date2, 20260713];
       const buffer = (session as any).serializeColumn(values, TSDataType.DATE);
 
       expect(buffer.length).toBe(12); // 3 values * 4 bytes
-      const days1 = Math.floor(date1.getTime() / (24 * 60 * 60 * 1000));
-      const days2 = Math.floor(date2.getTime() / (24 * 60 * 60 * 1000));
-      expect(buffer.readInt32BE(0)).toBe(days1);
-      expect(buffer.readInt32BE(4)).toBe(days2);
-      expect(buffer.readInt32BE(8)).toBe(0);
+      expect(buffer.readInt32BE(0)).toBe(20240101); // yyyyMMdd, NOT days since epoch
+      expect(buffer.readInt32BE(4)).toBe(20241231);
+      expect(buffer.readInt32BE(8)).toBe(20260713); // numbers pass through unchanged
+    });
+
+    test('should reject invalid DATE values during serialization', () => {
+      expect(() =>
+        (session as any).serializeColumn([20230229], TSDataType.DATE),
+      ).toThrow(/Invalid DATE/); // 2023 is not a leap year
+      expect(() =>
+        (session as any).serializeColumn([new Date(NaN)], TSDataType.DATE),
+      ).toThrow(/Invalid DATE/);
+    });
+
+    test('should serialize DATE 2026-07-13 with exact wire bytes', () => {
+      // IoTDB DATE wire format: INT32 yyyyMMdd, big-endian
+      // 20260713 = 0x01352769
+      const buffer = (session as any).serializeColumn(
+        [new Date('2026-07-13')],
+        TSDataType.DATE,
+      );
+      expect(Array.from(buffer)).toEqual([0x01, 0x35, 0x27, 0x69]);
     });
 
     test('should serialize TIMESTAMP column', () => {

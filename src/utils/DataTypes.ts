@@ -77,8 +77,8 @@ export enum TSDataType {
 
   /**
    * Date with day precision (no time component)
-   * JavaScript type: Date or number (days since epoch)
-   * Storage size: 4 bytes (stored as INT32)
+   * JavaScript type: Date or number (yyyyMMdd integer, e.g. 20240101)
+   * Storage size: 4 bytes (stored as INT32, encoded as year*10000 + month*100 + day)
    */
   DATE = 9,
 
@@ -97,6 +97,121 @@ export enum TSDataType {
   STRING = 11,
 
   // OBJECT = 12,   // Reserved - not yet implemented
+}
+
+/**
+ * Days per month (index 0 = January) in a non-leap year.
+ */
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+/**
+ * Validate a calendar date, matching the Java client's DateUtils semantics:
+ * years are restricted to 1000-9999 and (year, month, day) must form a real
+ * calendar date (LocalDate would reject e.g. 2023-02-29).
+ *
+ * @throws Error if the components do not form a valid calendar date
+ */
+function validateCalendarDate(
+  year: number,
+  month: number,
+  day: number,
+  source: string,
+): void {
+  if (year < 1000 || year > 9999) {
+    throw new Error(
+      `Invalid DATE value ${source}: year ${year} is out of range [1000, 9999]`,
+    );
+  }
+  if (month < 1 || month > 12) {
+    throw new Error(
+      `Invalid DATE value ${source}: month ${month} is out of range [1, 12]`,
+    );
+  }
+  const maxDay =
+    month === 2 && isLeapYear(year) ? 29 : DAYS_IN_MONTH[month - 1];
+  if (day < 1 || day > maxDay) {
+    throw new Error(
+      `Invalid DATE value ${source}: day ${day} is out of range [1, ${maxDay}] for ${year}-${String(month).padStart(2, "0")}`,
+    );
+  }
+}
+
+/**
+ * Convert a JavaScript Date (or an already-encoded yyyyMMdd number) to the
+ * IoTDB DATE wire format: an INT32 encoded as year*10000 + month*100 + day
+ * (e.g. 2024-01-01 -> 20240101).
+ *
+ * This matches the Java client's DateUtils.parseDateExpressionToInt and the
+ * C# client. The calendar date is taken from the Date's UTC components,
+ * consistent with `new Date("2024-01-01")` which parses as UTC midnight.
+ *
+ * Invalid inputs are rejected (like the Java client, which limits years to
+ * 1000-9999 and whose LocalDate guarantees a valid calendar date): invalid
+ * Date objects, non-finite/non-integer numbers, and numbers whose yyyyMMdd
+ * decomposition is not a real calendar date all throw.
+ *
+ * Note: null/undefined are not handled here — callers filter nulls before
+ * invoking this helper.
+ *
+ * @param value - Date object or a yyyyMMdd integer (validated, then passed
+ *   through unchanged)
+ * @returns The yyyyMMdd integer encoding
+ * @throws Error if the value is not a valid calendar date
+ */
+export function parseDateToInt(value: Date | number): number {
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) {
+      throw new Error("Invalid DATE value: Date object is invalid (NaN time)");
+    }
+    const year = value.getUTCFullYear();
+    const month = value.getUTCMonth() + 1;
+    const day = value.getUTCDate();
+    validateCalendarDate(year, month, day, value.toISOString());
+    return year * 10000 + month * 100 + day;
+  }
+  if (!Number.isInteger(value)) {
+    throw new Error(
+      `Invalid DATE value ${value}: expected an integer in yyyyMMdd form (e.g. 20240101)`,
+    );
+  }
+  validateCalendarDate(
+    Math.trunc(value / 10000),
+    Math.trunc(value / 100) % 100,
+    value % 100,
+    String(value),
+  );
+  return value;
+}
+
+/**
+ * Convert an IoTDB DATE wire value (INT32, year*10000 + month*100 + day)
+ * back to a JavaScript Date at UTC midnight of that calendar date.
+ *
+ * Inverse of {@link parseDateToInt}; matches the Java client's
+ * DateUtils.parseIntToDate. The value is validated the same way as
+ * {@link parseDateToInt} — non-integer numbers, years outside 1000-9999,
+ * and impossible calendar dates (e.g. 20230229) throw instead of being
+ * silently normalized by the Date constructor.
+ *
+ * @param value - The yyyyMMdd integer (e.g. 20240101)
+ * @returns Date at UTC midnight of the encoded calendar date
+ * @throws Error if the value is not a valid yyyyMMdd calendar date
+ */
+export function parseIntToDate(value: number): Date {
+  if (!Number.isInteger(value)) {
+    throw new Error(
+      `Invalid DATE value ${value}: expected an integer in yyyyMMdd form (e.g. 20240101)`,
+    );
+  }
+  const year = Math.trunc(value / 10000);
+  const month = Math.trunc(value / 100) % 100;
+  const day = value % 100;
+  validateCalendarDate(year, month, day, String(value));
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 /**

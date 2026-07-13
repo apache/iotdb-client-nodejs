@@ -274,6 +274,7 @@ export class SessionDataSet {
               this.columnNames.length,
               this.columnTypes,
               this.ignoreTimeStamp,
+              this.columnIndex2TsBlockColumnIndexList,
             );
           } else if (response.queryDataSet) {
             // Old columnar format (TSQueryDataSet)

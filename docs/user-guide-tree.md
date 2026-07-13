@@ -350,7 +350,7 @@ The tree model supports all IoTDB data types:
 | 4 | DOUBLE | number | 64-bit floating point |
 | 5 | TEXT | string | UTF-8 string |
 | 8 | TIMESTAMP | number/Date | Milliseconds since epoch |
-| 9 | DATE | number/Date | Days since epoch |
+| 9 | DATE | number/Date | Calendar date as `yyyyMMdd` integer (e.g. `20240101` for 2024-01-01) |
 | 10 | BLOB | Buffer | Binary data |
 | 11 | STRING | string | Same as TEXT |
 

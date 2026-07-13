@@ -18,6 +18,7 @@
  */
 
 import { logger } from "../utils/Logger";
+import { parseIntToDate } from "../utils/DataTypes";
 
 /**
  * Column encoding types matching Apache IoTDB ColumnEncoding enum
@@ -152,13 +153,23 @@ class Int32ArrayColumnDecoder implements ColumnDecoder {
 
     switch (dataType) {
       case 1: // INT32
-      case 9: // DATE
         for (let i = 0; i < positionCount; i++) {
           if (nullIndicators && nullIndicators[i]) {
             values[i] = null;
             continue;
           }
           values[i] = buffer.readInt32BE(currentOffset);
+          currentOffset += 4;
+        }
+        break;
+
+      case 9: // DATE (INT32 yyyyMMdd encoding -> Date object)
+        for (let i = 0; i < positionCount; i++) {
+          if (nullIndicators && nullIndicators[i]) {
+            values[i] = null;
+            continue;
+          }
+          values[i] = parseIntToDate(buffer.readInt32BE(currentOffset));
           currentOffset += 4;
         }
         break;
