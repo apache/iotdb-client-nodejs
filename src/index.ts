@@ -49,7 +49,11 @@ export { RedirectException, TSStatusCode } from "./utils/Errors";
 export { RedirectCache } from "./client/RedirectCache";
 export { enableGlobalCleanup } from "./utils/ProcessCleanup";
 export { BufferPool, globalBufferPool } from "./utils/BufferPool";
-export { serializeColumnFast, serializeTimestamps } from "./utils/FastSerializer";
+export {
+  serializeColumnFast,
+  serializeTimestamps,
+  serializeTabletValuesFast,
+} from "./utils/FastSerializer";
 
 // Concurrent execution utilities for Node.js optimization
 export {

@@ -30,11 +30,10 @@ import { SessionDataSet } from "./SessionDataSet";
 import { RowRecord } from "./RowRecord";
 import { BaseColumnDecoder, ColumnEncoding, Column } from "./ColumnDecoder";
 import { RedirectException } from "../utils/Errors";
-import { 
-  serializeColumnFast, 
-  serializeTimestamps 
+import {
+  serializeTabletValuesFast,
+  serializeTimestamps
 } from "../utils/FastSerializer";
-import { globalBufferPool } from "../utils/BufferPool";
 import { parseDateToInt, parseIntToDate } from "../utils/DataTypes";
 
 const ttypes = require("../thrift/generated/client_types");
@@ -611,7 +610,15 @@ export class Session {
     dataTypes: number[],
     rowCount: number,
   ): Buffer {
-    // Serialize tablet values based on data types
+    // Fast path (default): single-pass, single-buffer serialization of all
+    // columns + null bitmaps — no transpose, no per-column intermediate
+    // buffers, no trailing Buffer.concat. Wire format is identical to the
+    // legacy path below.
+    if (this.config.enableFastSerialization) {
+      return serializeTabletValuesFast(values, dataTypes, rowCount);
+    }
+
+    // Legacy path: per-column serialization + Buffer.concat
     // Format: all columns data, then bitmap for null values
     const buffers: Buffer[] = [];
     const bitMaps: (boolean[] | null)[] = [];
@@ -635,10 +642,7 @@ export class Session {
         }
       }
 
-      // Use fast serialization if enabled, otherwise fall back to legacy
-      const buffer = this.config.enableFastSerialization
-        ? serializeColumnFast(columnValues, dataType)
-        : this.serializeColumn(columnValues, dataType);
+      const buffer = this.serializeColumn(columnValues, dataType);
       buffers.push(buffer);
       bitMaps.push(hasNull ? nullBitmap : null);
     }
