@@ -29,6 +29,7 @@ import {
   serializeBlobColumn,
   serializeTimestamps,
   serializeColumnFast,
+  writeInt64BE,
 } from "../../src/utils/FastSerializer";
 import { globalBufferPool } from "../../src/utils/BufferPool";
 
@@ -77,6 +78,110 @@ describe("FastSerializer", () => {
       expect(buffer.readBigInt64BE(16)).toBe(BigInt(0));
       expect(buffer.readBigInt64BE(24)).toBe(BigInt(0)); // null -> 0
       expect(buffer.readBigInt64BE(32)).toBe(BigInt(0)); // undefined -> 0
+    });
+  });
+
+  describe("BigInt-free INT64 hi/lo writes", () => {
+    const roundTrip = (v: number | bigint): bigint => {
+      const buf = Buffer.allocUnsafe(8);
+      writeInt64BE(buf, v, 0);
+      return buf.readBigInt64BE(0);
+    };
+
+    it("should write positive numbers correctly", () => {
+      expect(roundTrip(0)).toBe(BigInt(0));
+      expect(roundTrip(1)).toBe(BigInt(1));
+      expect(roundTrip(0xffffffff)).toBe(BigInt(0xffffffff)); // 32-bit boundary
+      expect(roundTrip(0x100000000)).toBe(BigInt("4294967296"));
+      expect(roundTrip(Number.MAX_SAFE_INTEGER)).toBe(BigInt(Number.MAX_SAFE_INTEGER));
+    });
+
+    it("should write negative numbers correctly (two's complement)", () => {
+      expect(roundTrip(-1)).toBe(BigInt(-1));
+      expect(roundTrip(-2000)).toBe(BigInt(-2000));
+      expect(roundTrip(-0x100000000)).toBe(BigInt("-4294967296"));
+      expect(roundTrip(-0x100000001)).toBe(BigInt("-4294967297"));
+      expect(roundTrip(Number.MIN_SAFE_INTEGER)).toBe(BigInt(Number.MIN_SAFE_INTEGER));
+    });
+
+    it("should handle BigInt inputs", () => {
+      expect(roundTrip(BigInt(1000))).toBe(BigInt(1000));
+      expect(roundTrip(BigInt(-2000))).toBe(BigInt(-2000));
+      expect(roundTrip(BigInt("-9223372036854775808"))).toBe(BigInt("-9223372036854775808")); // i64 min
+      expect(roundTrip(BigInt("9223372036854775807"))).toBe(BigInt("9223372036854775807")); // i64 max
+    });
+
+    it("should match legacy BigInt output for INT64 columns with negatives", () => {
+      const values = [
+        Number.MIN_SAFE_INTEGER,
+        -1,
+        -0x100000000,
+        0,
+        0xffffffff,
+        Number.MAX_SAFE_INTEGER,
+        BigInt(-42),
+      ];
+      const buffer = serializeInt64Column(values);
+      const legacy = Buffer.alloc(values.length * 8);
+      values.forEach((v, i) => legacy.writeBigInt64BE(BigInt(v), i * 8));
+      expect(buffer.equals(legacy)).toBe(true);
+    });
+
+    it("should serialize negative timestamps (pre-1970) correctly", () => {
+      const values = [-1, -86400000, 0, 1700000000000];
+      const buffer = serializeTimestampColumn(values);
+      values.forEach((v, i) => {
+        expect(buffer.readBigInt64BE(i * 8)).toBe(BigInt(v));
+      });
+      // serializeTimestamps (time column) too
+      const tsBuffer = serializeTimestamps(values as number[]);
+      values.forEach((v, i) => {
+        expect(tsBuffer.readBigInt64BE(i * 8)).toBe(BigInt(v));
+      });
+    });
+  });
+
+  describe("String encode cache", () => {
+    it("should reuse encoding for repeated strings (TAG-like column)", () => {
+      const values = Array.from({ length: 100 }, () => "device_001");
+      const buffer = serializeTextColumn(values);
+      let offset = 0;
+      for (let i = 0; i < 100; i++) {
+        const len = buffer.readInt32BE(offset);
+        offset += 4;
+        expect(buffer.toString("utf8", offset, offset + len)).toBe("device_001");
+        offset += len;
+      }
+      expect(offset).toBe(buffer.length);
+    });
+
+    it("should not wrongly reuse cache for different strings", () => {
+      const values = ["aaa", "aaa", "bbb", "aaa", "cc", "你好", "你好", "cc"];
+      const buffer = serializeTextColumn(values);
+      let offset = 0;
+      for (const v of values) {
+        const expected = Buffer.from(v, "utf8");
+        const len = buffer.readInt32BE(offset);
+        offset += 4;
+        expect(len).toBe(expected.length);
+        expect(buffer.toString("utf8", offset, offset + len)).toBe(v);
+        offset += len;
+      }
+      expect(offset).toBe(buffer.length);
+    });
+
+    it("should handle nulls interleaved with cached strings", () => {
+      const values = ["x", null, "x", undefined, "y"];
+      const buffer = serializeTextColumn(values);
+      let offset = 0;
+      const expected = ["x", "", "x", "", "y"];
+      for (const v of expected) {
+        const len = buffer.readInt32BE(offset);
+        offset += 4;
+        expect(buffer.toString("utf8", offset, offset + len)).toBe(v);
+        offset += len;
+      }
+      expect(offset).toBe(buffer.length);
     });
   });
 
@@ -273,20 +378,20 @@ describe("FastSerializer", () => {
   });
 
   describe("Buffer Pool Integration", () => {
-    it("should track buffer pool statistics", () => {
+    it("should no longer use the deprecated buffer pool", () => {
       const statsInitial = globalBufferPool.getStats();
-      
-      // Allocate buffers larger than 1KB to trigger pooling
+
+      // Large buffers used to trigger pooling; serializers now allocate directly
       const largeValues = Array.from({ length: 300 }, (_, i) => i); // 300 * 4 = 1200 bytes
-      serializeInt32Column(largeValues); // This should use the pool
-      serializeDoubleColumn(largeValues); // 300 * 8 = 2400 bytes, uses pool
-      
+      serializeInt32Column(largeValues);
+      serializeDoubleColumn(largeValues); // 300 * 8 = 2400 bytes
+
       const statsFinal = globalBufferPool.getStats();
-      
-      // Should have some allocations (or hits if pool was already populated)
-      const totalActivity = statsFinal.allocations + statsFinal.hits;
-      const initialActivity = statsInitial.allocations + statsInitial.hits;
-      expect(totalActivity).toBeGreaterThan(initialActivity);
+
+      // The pool is deprecated: no acquire() calls should be made
+      expect(statsFinal.allocations + statsFinal.hits).toBe(
+        statsInitial.allocations + statsInitial.hits,
+      );
     });
   });
 });

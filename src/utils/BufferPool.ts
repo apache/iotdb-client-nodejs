@@ -22,7 +22,13 @@ import { logger } from "./Logger";
 /**
  * Buffer pool for reusing buffers to reduce GC pressure
  * Inspired by pg nodejs client's buffer management strategy
- * 
+ *
+ * @deprecated No longer used internally. The write path never called
+ * release(), so the pool had a 0% hit rate and acquire() was pure overhead
+ * over Buffer.allocUnsafe. Kept only because it is part of the public API
+ * surface (exported from src/index.ts); may be removed in a future major
+ * version.
+ *
  * Key design principles:
  * 1. Size classes to minimize waste (powers of 2)
  * 2. Maximum pool size to prevent memory bloat

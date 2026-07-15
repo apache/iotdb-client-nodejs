@@ -288,6 +288,117 @@ describe('Tablet Serialization', () => {
     });
   });
 
+  describe('Fast vs Legacy Tablet Serialization (golden wire-format test)', () => {
+    let legacySession: Session;
+
+    beforeEach(() => {
+      legacySession = new Session({
+        host: 'localhost',
+        port: 6667,
+        username: 'root',
+        password: 'root',
+        enableFastSerialization: false,
+      });
+    });
+
+    const compare = (values: any[][], dataTypes: number[], rowCount: number) => {
+      const fast: Buffer = (session as any).serializeTabletValues(values, dataTypes, rowCount);
+      const legacy: Buffer = (legacySession as any).serializeTabletValues(values, dataTypes, rowCount);
+      expect(fast.length).toBe(legacy.length);
+      expect(fast.equals(legacy)).toBe(true);
+    };
+
+    test('mixed-type tablet with nulls matches legacy byte-for-byte', () => {
+      // 10 rows × 8 columns covering every type, nulls scattered
+      const dataTypes = [
+        TSDataType.BOOLEAN,
+        TSDataType.INT32,
+        TSDataType.INT64,
+        TSDataType.FLOAT,
+        TSDataType.DOUBLE,
+        TSDataType.TEXT,
+        TSDataType.TIMESTAMP,
+        TSDataType.STRING,
+      ];
+      const values: any[][] = [];
+      for (let r = 0; r < 10; r++) {
+        values.push([
+          r % 3 === 0 ? null : r % 2 === 0,
+          r === 1 ? null : r * 100 - 500,
+          r === 4 ? null : BigInt(-1000000000000) + BigInt(r),
+          r === 7 ? undefined : r * 1.5 - 3,
+          r === 2 ? null : r * 2.5e10,
+          r === 5 ? null : `tag_${r % 2}`, // repeated strings exercise the cache
+          r === 8 ? null : 1700000000000 + r,
+          r === 0 ? null : '设备_' + (r % 3),
+        ]);
+      }
+      compare(values, dataTypes, 10);
+    });
+
+    test('tablet with no nulls matches legacy byte-for-byte', () => {
+      const dataTypes = [TSDataType.DOUBLE, TSDataType.INT64, TSDataType.TEXT];
+      const values: any[][] = [];
+      for (let r = 0; r < 17; r++) {
+        // 17 rows: bitmap byte-count edge (ceil(17/8)=3)
+        values.push([r * 1.1, -r * 12345678901, 'constant_tag']);
+      }
+      compare(values, dataTypes, 17);
+    });
+
+    test('tablet with all-null column matches legacy byte-for-byte', () => {
+      const dataTypes = [TSDataType.INT32, TSDataType.TEXT, TSDataType.BOOLEAN];
+      const values: any[][] = [];
+      for (let r = 0; r < 9; r++) {
+        values.push([null, r % 2 === 0 ? 's' : null, true]);
+      }
+      compare(values, dataTypes, 9);
+    });
+
+    test('BLOB and DATE tablet matches legacy byte-for-byte', () => {
+      const dataTypes = [TSDataType.BLOB, TSDataType.DATE];
+      const values: any[][] = [
+        [Buffer.from([1, 2, 3]), new Date('2024-01-01')],
+        [null, 20240102],
+        [Buffer.alloc(0), null],
+        [Buffer.from([0xff]), new Date('2025-06-15')],
+      ];
+      compare(values, dataTypes, 4);
+    });
+
+    test('non-Buffer BLOB inputs (Uint8Array, byte array, string) match legacy', () => {
+      const dataTypes = [TSDataType.BLOB];
+      const values: any[][] = [
+        [new Uint8Array([0x01, 0x02, 0x03, 0x04])],
+        [[0x10, 0x20, 0x30]],
+        ['hello-blob'],
+        [null],
+        [new Uint8Array(0)],
+      ];
+      compare(values, dataTypes, 5);
+    });
+
+    test('ArrayBuffer and SharedArrayBuffer BLOB inputs match legacy', () => {
+      const dataTypes = [TSDataType.BLOB];
+      const ab = new Uint8Array([0x01, 0x02, 0xff]).buffer;
+      const sab = new SharedArrayBuffer(4);
+      new Uint8Array(sab).set([0xaa, 0xbb, 0xcc, 0xdd]);
+      const values: any[][] = [
+        [ab],
+        [sab],
+        [new ArrayBuffer(0)],
+        [null],
+      ];
+      compare(values, dataTypes, 4);
+    });
+
+    test('single-row and empty-ish edge cases match legacy', () => {
+      compare([[42]], [TSDataType.INT32], 1);
+      compare([[null]], [TSDataType.DOUBLE], 1);
+      compare([[9007199254740991, -9007199254740991]].map((r) => r), [TSDataType.INT64, TSDataType.INT64], 1);
+    });
+  });
+
   describe('Column Serialization - Other Data Types', () => {
     test('should serialize BOOLEAN column', () => {
       const values = [true, false, true, false];

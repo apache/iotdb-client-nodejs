@@ -63,9 +63,10 @@ export interface Config {
   enableSSL?: boolean;
   sslOptions?: SSLOptions;
   /**
-   * Enable optimized fast serialization with buffer pooling.
-   * Improves performance by 2-3x but may increase memory usage slightly.
-   * Inspired by pg nodejs client's buffer management.
+   * Enable the optimized tablet serialization path: single-pass,
+   * single-buffer writes with inline null bitmaps (no intermediate
+   * per-column buffers or Buffer.concat), BigInt-free int64 writes.
+   * Produces byte-identical wire output to the legacy path.
    * 
    * @default true
    */
