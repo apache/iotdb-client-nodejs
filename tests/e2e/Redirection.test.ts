@@ -35,6 +35,33 @@ describe("Redirection E2E Tests", () => {
   let tablePool: TableSessionPool;
   let isConnected = false;
 
+  // Rows written through redirects land on different DataNodes; with
+  // data_replication_factor=2 the last write may not be visible to an
+  // immediate query yet. Poll briefly instead of asserting right away.
+  async function countRowsWithRetry(
+    pool: SessionPool | TableSessionPool,
+    sql: string,
+    minRows: number,
+    attempts = 5,
+    delayMs = 1000,
+  ): Promise<number> {
+    let rowCount = 0;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const dataSet = await pool.executeQueryStatement(sql);
+      rowCount = 0;
+      while (await dataSet.hasNext()) {
+        dataSet.next();
+        rowCount++;
+      }
+      await dataSet.close();
+      if (rowCount >= minRows) {
+        return rowCount;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return rowCount;
+  }
+
   beforeAll(async () => {
     // Skip redirection tests if not in multi-node environment
     if (!IS_MULTI_NODE) {
@@ -175,16 +202,11 @@ describe("Redirection E2E Tests", () => {
       }
 
       // Verify data was written successfully by querying
-      const dataSet = await treePool.executeQueryStatement(
-        "SELECT * FROM root.test_redirect.**"
+      const rowCount = await countRowsWithRetry(
+        treePool,
+        "SELECT * FROM root.test_redirect.**",
+        5,
       );
-
-      let rowCount = 0;
-      while (await dataSet.hasNext()) {
-        dataSet.next();
-        rowCount++;
-      }
-      await dataSet.close();
 
       // We should have at least 5 rows (one per device)
       expect(rowCount).toBeGreaterThanOrEqual(5);
@@ -287,16 +309,11 @@ describe("Redirection E2E Tests", () => {
       }
 
       // Verify data was written successfully
-      const dataSet = await tablePool.executeQueryStatement(
-        "SELECT * FROM sensor_data"
+      const rowCount = await countRowsWithRetry(
+        tablePool,
+        "SELECT * FROM sensor_data",
+        5,
       );
-
-      let rowCount = 0;
-      while (await dataSet.hasNext()) {
-        dataSet.next();
-        rowCount++;
-      }
-      await dataSet.close();
 
       expect(rowCount).toBeGreaterThanOrEqual(5);
     });
