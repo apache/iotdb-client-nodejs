@@ -8,9 +8,13 @@ on:
 
 jobs:
   e2e-1c1d:
-    name: E2E Test with 1 ConfigNode and 1 DataNode
+    name: E2E 1C1D (iotdb ${{ matrix.iotdb-version }})
     runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        iotdb-version: ["2.0.6", "2.0.10"]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,6 +35,8 @@ jobs:
         run: mkdir -p test-results
 
       - name: Start IoTDB with Docker Compose
+        env:
+          IOTDB_VERSION: ${{ matrix.iotdb-version }}
         run: |
           docker compose -f docker-compose-1c1d.yml up -d
           echo "Waiting for IoTDB to be ready..."
@@ -80,5 +86,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-test-results-1c1d
+          name: e2e-test-results-1c1d-iotdb-${{ matrix.iotdb-version }}
           path: test-results/

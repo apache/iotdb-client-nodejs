@@ -1,6 +1,6 @@
 services:
   iotdb-datanode:
-    image: apache/iotdb:2.0.6-datanode
+    image: apache/iotdb:${IOTDB_VERSION:-2.0.6}-datanode
     container_name: iotdb-datanode
     restart: always
     depends_on:
@@ -24,7 +24,7 @@ services:
       - CONFIGNODE_JMX_OPTS=-Xms384M -Xmx384M -XX:MaxDirectMemorySize=192M
 
   iotdb-confignode:
-    image: apache/iotdb:2.0.6-confignode
+    image: apache/iotdb:${IOTDB_VERSION:-2.0.6}-confignode
     container_name: iotdb-confignode
     restart: always
     healthcheck:

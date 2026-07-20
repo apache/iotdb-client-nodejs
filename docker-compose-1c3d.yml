@@ -1,7 +1,7 @@
 services:
   # ConfigNode (single instance for metadata management)
   iotdb-confignode:
-    image: apache/iotdb:2.0.6-confignode
+    image: apache/iotdb:${IOTDB_VERSION:-2.0.6}-confignode
     container_name: iotdb-confignode
     restart: always
     healthcheck:
@@ -23,7 +23,7 @@ services:
 
   # DataNode 1
   iotdb-datanode-1:
-    image: apache/iotdb:2.0.6-datanode
+    image: apache/iotdb:${IOTDB_VERSION:-2.0.6}-datanode
     container_name: iotdb-datanode-1
     restart: always
     healthcheck:
@@ -51,7 +51,7 @@ services:
 
   # DataNode 2
   iotdb-datanode-2:
-    image: apache/iotdb:2.0.6-datanode
+    image: apache/iotdb:${IOTDB_VERSION:-2.0.6}-datanode
     container_name: iotdb-datanode-2
     restart: always
     healthcheck:
@@ -79,7 +79,7 @@ services:
 
   # DataNode 3
   iotdb-datanode-3:
-    image: apache/iotdb:2.0.6-datanode
+    image: apache/iotdb:${IOTDB_VERSION:-2.0.6}-datanode
     container_name: iotdb-datanode-3
     restart: always
     healthcheck:
