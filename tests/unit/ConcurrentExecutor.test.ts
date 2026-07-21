@@ -105,6 +105,29 @@ describe('ConcurrentExecutor', () => {
       expect(processedCount).toBeLessThanOrEqual(items.length);
     });
 
+    it('should not count skipped items as successes when stopping on error', async () => {
+      const items = Array.from({ length: 10 }, (_, i) => i);
+      let processedCount = 0;
+
+      const result = await executeConcurrent(
+        items,
+        async (item) => {
+          processedCount++;
+          // The very first item fails, so nothing else is attempted.
+          throw new Error(`fail ${item}`);
+        },
+        { concurrency: 1, stopOnError: true }
+      );
+
+      // Only one item was ever attempted (and it failed); the remaining 9
+      // were skipped and are neither successes nor failures.
+      expect(processedCount).toBe(1);
+      expect(result.failureCount).toBe(1);
+      // successCount must reflect actually-completed operations (0), not
+      // items.length - errors.length (which would wrongly report 9).
+      expect(result.successCount).toBe(0);
+    });
+
     it('should limit concurrency', async () => {
       const maxConcurrent = { current: 0, max: 0 };
       const items = Array.from({ length: 10 }, (_, i) => i);

@@ -159,7 +159,7 @@ export async function executeConcurrent<T, R>(
   return {
     results,
     durationMs,
-    successCount: items.length - errors.length,
+    successCount: completedCount,
     failureCount: errors.length,
     errors,
   };
