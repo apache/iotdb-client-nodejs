@@ -92,6 +92,20 @@ export class Connection {
       this.isConnected = true;
     } catch (error) {
       logger.error("Failed to connect:", error);
+      // Tear down the half-open connection so its socket and event listeners
+      // don't leak when session setup (openSession/requestStatementId) fails
+      // after the TCP connection was already established. Mirrors close().
+      if (this.connection) {
+        this.connection.removeAllListeners();
+        if (typeof this.connection.destroy === "function") {
+          this.connection.destroy();
+        } else {
+          this.connection.end();
+        }
+        this.connection = null;
+      }
+      this.client = null;
+      this.isConnected = false;
       throw error;
     }
   }
