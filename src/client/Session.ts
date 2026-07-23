@@ -29,7 +29,7 @@ import { registerClosable, unregisterClosable } from "../utils/ProcessCleanup";
 import { SessionDataSet } from "./SessionDataSet";
 import { RowRecord } from "./RowRecord";
 import { BaseColumnDecoder, ColumnEncoding, Column } from "./ColumnDecoder";
-import { RedirectException } from "../utils/Errors";
+import { RedirectException, isWildcardAddress } from "../utils/Errors";
 import {
   serializeTabletValuesFast,
   serializeTimestamps
@@ -243,6 +243,11 @@ export class Session {
   getAndClearLastRedirect(): EndPoint | null {
     const redirect = this.lastRedirectEndpoint;
     this.lastRedirectEndpoint = null;
+    // Ignore a redirect to a wildcard/listen-all address (0.0.0.0 / ::),
+    // which is not a connectable remote endpoint (mirrors apache/iotdb#18162).
+    if (redirect && isWildcardAddress(redirect.host)) {
+      return null;
+    }
     return redirect;
   }
 

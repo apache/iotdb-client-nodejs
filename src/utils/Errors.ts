@@ -20,6 +20,17 @@
 import { EndPoint } from "./Config";
 
 /**
+ * A wildcard / listen-all address (IPv4 "0.0.0.0" or IPv6 "::") is not a
+ * connectable remote endpoint. When a server advertises one in a redirect
+ * recommendation, the client must ignore it and keep its current endpoint,
+ * consistent with apache/iotdb#18162.
+ */
+export function isWildcardAddress(host: string): boolean {
+  const h = host.trim().replace(/^\[/, "").replace(/\]$/, "");
+  return h === "0.0.0.0" || h === "::" || h === "0:0:0:0:0:0:0:0";
+}
+
+/**
  * Represents a redirect recommendation from the server.
  * Thrown when the server suggests a better endpoint for a device.
  */

@@ -33,22 +33,47 @@ export interface InternalConfig extends Config {
 }
 
 /**
+ * Parse a single "host:port" node URL into an EndPoint. Accepts the bracketed
+ * IPv6 form "[::1]:6667" (consistent with the [ipv6]:port endpoint format
+ * standardized in apache/iotdb#18162) as well as IPv4 and hostname URLs. A bare
+ * (unbracketed) IPv6 address with a port is ambiguous and rejected; the
+ * "[ipv6]:port" form must be used.
+ */
+function parseNodeUrl(url: string): EndPoint {
+  const trimmed = url.trim();
+  let host: string;
+  let portStr: string;
+  if (trimmed.startsWith('[')) {
+    // Bracketed IPv6: [host]:port
+    const close = trimmed.indexOf(']');
+    if (close === -1 || trimmed[close + 1] !== ':') {
+      throw new Error(`Invalid nodeUrl format: ${url}. Expected format: "[ipv6]:port"`);
+    }
+    host = trimmed.slice(1, close).trim();
+    portStr = trimmed.slice(close + 2).trim();
+  } else {
+    const idx = trimmed.indexOf(':');
+    // A non-bracketed URL with more than one colon is a bare IPv6 address,
+    // which is ambiguous with a trailing port; it must be written as [ipv6]:port.
+    if (idx === -1 || idx !== trimmed.lastIndexOf(':')) {
+      throw new Error(`Invalid nodeUrl format: ${url}. Expected format: "host:port" (use "[ipv6]:port" for IPv6 addresses)`);
+    }
+    host = trimmed.slice(0, idx).trim();
+    portStr = trimmed.slice(idx + 1).trim();
+  }
+  const port = parseInt(portStr, 10);
+  if (!host || isNaN(port) || port <= 0 || port > 65535) {
+    throw new Error(`Invalid nodeUrl format: ${url}. Host must be non-empty and port must be a valid number (1-65535)`);
+  }
+  return { host, port };
+}
+
+/**
  * Parse nodeUrls from string array format (e.g., ["host1:6667", "host2:6668"])
  * to EndPoint array format
  */
 export function parseNodeUrls(nodeUrls: string[]): EndPoint[] {
-  return nodeUrls.map((url) => {
-    const parts = url.split(':');
-    if (parts.length !== 2) {
-      throw new Error(`Invalid nodeUrl format: ${url}. Expected format: "host:port"`);
-    }
-    const host = parts[0].trim();
-    const port = parseInt(parts[1].trim(), 10);
-    if (!host || isNaN(port) || port <= 0 || port > 65535) {
-      throw new Error(`Invalid nodeUrl format: ${url}. Host must be non-empty and port must be a valid number (1-65535)`);
-    }
-    return { host, port };
-  });
+  return nodeUrls.map(parseNodeUrl);
 }
 
 export interface Config {

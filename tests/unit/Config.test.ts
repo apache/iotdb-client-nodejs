@@ -182,10 +182,28 @@ describe('parseNodeUrls', () => {
 
   test('Should handle whitespace in nodeUrls', () => {
     const nodeUrls = [' localhost : 6667 '];
-    
+
     const parsed = parseNodeUrls(nodeUrls);
-    
+
     expect(parsed[0]).toEqual({ host: 'localhost', port: 6667 });
+  });
+
+  test('Should parse bracketed IPv6 nodeUrls', () => {
+    const parsed = parseNodeUrls(['[::1]:6667', '[2001:db8::1]:6668']);
+
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toEqual({ host: '::1', port: 6667 });
+    expect(parsed[1]).toEqual({ host: '2001:db8::1', port: 6668 });
+  });
+
+  test('Should throw for a bare (unbracketed) IPv6 address', () => {
+    expect(() => parseNodeUrls(['::1:6667'])).toThrow('Invalid nodeUrl format');
+  });
+
+  test('Should throw for malformed bracketed IPv6', () => {
+    expect(() => parseNodeUrls(['[::1:6667'])).toThrow('Invalid nodeUrl format'); // unbalanced bracket
+    expect(() => parseNodeUrls(['[::1]6667'])).toThrow('Invalid nodeUrl format'); // missing colon before port
+    expect(() => parseNodeUrls(['[::1]:'])).toThrow('Invalid nodeUrl format'); // empty port
   });
 });
 
