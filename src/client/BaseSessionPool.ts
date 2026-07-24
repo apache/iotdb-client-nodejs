@@ -50,7 +50,7 @@ export abstract class BaseSessionPool {
   protected config: PoolConfig;
   protected endPoints: EndPoint[];
   protected pool: PooledSession[] = [];
-  protected waitQueue: Denque<(session: Session) => void> = new Denque();
+  protected waitQueue: Denque<(session: Session) => boolean> = new Denque();
   protected idleSessions: Denque<PooledSession> = new Denque();
   protected activeSessions: Set<PooledSession> = new Set();
   protected currentEndPointIndex = 0;
@@ -237,6 +237,11 @@ export abstract class BaseSessionPool {
       // Verify session is still open
       if (pooledSession.session.isOpen()) {
         this.activeSessions.add(pooledSession);
+        // Mark in use — the new-session and waiter branches both do this; the
+        // idle-reuse path omitting it left a reused, actively-in-use session
+        // with inUse===false, which syncDatabaseContextToPool (filters
+        // !inUse) would treat as idle and fire a concurrent USE on.
+        pooledSession.inUse = true;
         pooledSession.lastUsed = Date.now();
         const duration = Date.now() - startTime;
         logger.debug(
@@ -261,7 +266,15 @@ export abstract class BaseSessionPool {
       const session = await this.createSession();
       const pooledSession = this.pool.find((ps) => ps.session === session);
       if (pooledSession) {
-        this.idleSessions.shift(); // Remove from idle since we just added it
+        // Remove *this* session from idle. createSession() pushed it to the
+        // back of idleSessions; a blind shift() removes the front, which under
+        // concurrent interleaving (a session released into idle while we were
+        // awaiting createSession) would evict a different session and leave
+        // this one double-tracked as both idle and active.
+        const idleIndex = this.idleSessions.toArray().indexOf(pooledSession);
+        if (idleIndex > -1) {
+          this.idleSessions.remove(idleIndex, 1);
+        }
         this.activeSessions.add(pooledSession);
         pooledSession.inUse = true;
       }
@@ -276,9 +289,31 @@ export abstract class BaseSessionPool {
     );
     const waitTimeout = this.config.waitTimeout || 60000;
     return new Promise((resolve, reject) => {
+      let settled = false;
+
+      // The queue stores this exact wrapper. On timeout we must remove *this*
+      // reference (not `resolve`, which is never in the queue), and the
+      // `settled` guard makes timeout and fulfillment mutually exclusive so a
+      // session is never handed to a waiter whose promise already rejected.
+      const waiter = (session: Session): boolean => {
+        if (settled) {
+          return false;
+        }
+        settled = true;
+        clearTimeout(timeoutId);
+        const duration = Date.now() - startTime;
+        logger.debug(`[PERF] getSession (waited): ${duration}ms`);
+        resolve(session);
+        return true;
+      };
+
       const timeoutId = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
         const waiters = this.waitQueue.toArray();
-        const index = waiters.indexOf(resolve);
+        const index = waiters.indexOf(waiter);
         if (index > -1) {
           this.waitQueue.remove(index, 1);
         }
@@ -290,12 +325,7 @@ export abstract class BaseSessionPool {
         timeoutId.unref();
       }
 
-      this.waitQueue.push((session: Session) => {
-        clearTimeout(timeoutId);
-        const duration = Date.now() - startTime;
-        logger.debug(`[PERF] getSession (waited): ${duration}ms`);
-        resolve(session);
-      });
+      this.waitQueue.push(waiter);
     });
   }
 
@@ -313,22 +343,27 @@ export abstract class BaseSessionPool {
       pooledSession.inUse = false;
       pooledSession.lastUsed = Date.now();
 
-      // Check if there are waiting requests
-      if (this.waitQueue.length > 0) {
+      // Hand the session to the first waiter that is still pending. A waiter
+      // whose promise already settled (e.g. it timed out) returns false; skip
+      // it and try the next one, so a released session is never leaked to a
+      // dead waiter (which would leave it marked active but held by nobody).
+      while (this.waitQueue.length > 0) {
         const waiter = this.waitQueue.shift();
-        if (waiter) {
-          // Move to active for the waiter
-          this.activeSessions.add(pooledSession);
-          pooledSession.inUse = true;
-          waiter(session);
-        } else {
-          // No waiter actually found, add back to idle
-          this.idleSessions.push(pooledSession);
+        if (!waiter) {
+          continue;
         }
-      } else {
-        // No waiters, add back to idle
-        this.idleSessions.push(pooledSession);
+        this.activeSessions.add(pooledSession);
+        pooledSession.inUse = true;
+        if (waiter(session)) {
+          return;
+        }
+        // Stale waiter; undo the active bookkeeping and try the next one.
+        this.activeSessions.delete(pooledSession);
+        pooledSession.inUse = false;
       }
+
+      // No live waiter; add back to idle.
+      this.idleSessions.push(pooledSession);
     }
   }
 
@@ -342,24 +377,33 @@ export abstract class BaseSessionPool {
     const idleArray = this.idleSessions.toArray();
 
     for (const ps of idleArray) {
-      if (now - ps.lastUsed > maxIdleTime && this.pool.length > minSize) {
+      // Subtract already-queued removals so the pool never drops below
+      // minPoolSize: without this the guard sees the constant pre-cleanup size
+      // and can queue every idle session, collapsing the pool to 0.
+      if (
+        now - ps.lastUsed > maxIdleTime &&
+        this.pool.length - sessionsToRemove.length > minSize
+      ) {
         sessionsToRemove.push(ps);
       }
     }
 
     await Promise.all(
       sessionsToRemove.map(async (ps) => {
+        // Remove from pool + idle BEFORE closing. close() awaits the
+        // closeSession RPC and isOpen() stays true until it resolves, so a
+        // concurrent getSession() could otherwise shift() this session and
+        // hand out a connection that is about to be destroyed.
+        const poolIndex = this.pool.indexOf(ps);
+        if (poolIndex > -1) {
+          this.pool.splice(poolIndex, 1);
+        }
+        const idleIndex = this.idleSessions.toArray().indexOf(ps);
+        if (idleIndex > -1) {
+          this.idleSessions.remove(idleIndex, 1);
+        }
         try {
           await ps.session.close();
-          const poolIndex = this.pool.indexOf(ps);
-          if (poolIndex > -1) {
-            this.pool.splice(poolIndex, 1);
-          }
-          // Remove from idle sessions deque
-          const idleIndex = this.idleSessions.toArray().indexOf(ps);
-          if (idleIndex > -1) {
-            this.idleSessions.remove(idleIndex, 1);
-          }
           logger.debug(`Removed idle session from ${this.getPoolName()}`);
         } catch (error) {
           logger.error("Error closing idle session:", error);
