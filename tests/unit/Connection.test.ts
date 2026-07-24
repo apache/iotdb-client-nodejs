@@ -129,4 +129,68 @@ describe("Connection", () => {
 
     await connection.close();
   });
+
+  test("Should tear down the socket when session setup fails", async () => {
+    // openSession rejects after the TCP connection was established.
+    thriftMock.createClient.mockReturnValueOnce({
+      openSession: jest.fn((_req: unknown, callback: (e: Error | null, r: unknown) => void) =>
+        callback(new Error("auth failed"), null),
+      ),
+      requestStatementId: jest.fn((_sid: unknown, callback: (e: Error | null, r: unknown) => void) =>
+        callback(null, 456),
+      ),
+      closeSession: jest.fn((_req: unknown, callback: (e: Error | null, r: unknown) => void) =>
+        callback(null, { status: { code: 200 } }),
+      ),
+    });
+
+    const config: InternalConfig = {
+      host: "localhost",
+      port: 6667,
+      username: "root",
+      password: "bad",
+      enableSSL: false,
+      sqlDialect: "tree",
+    };
+    const connection = new Connection(config);
+
+    // The original setup error must surface, not be masked by the teardown.
+    await expect(connection.open()).rejects.toThrow("auth failed");
+
+    // The half-open connection must be torn down (mirrors close()); the buggy
+    // catch only logged + rethrew, leaking the socket and its listeners.
+    expect(thriftMock.__mockConnection.removeAllListeners).toHaveBeenCalled();
+    expect(thriftMock.__mockConnection.destroy).toHaveBeenCalled();
+  });
+
+  test("Should clear sessionId when statement setup fails after openSession", async () => {
+    // openSession succeeds (sets sessionId), then requestStatementId rejects.
+    thriftMock.createClient.mockReturnValueOnce({
+      openSession: jest.fn((_req: unknown, callback: (e: Error | null, r: unknown) => void) =>
+        callback(null, { status: { code: 200 }, sessionId: 123 }),
+      ),
+      requestStatementId: jest.fn((_sid: unknown, callback: (e: Error | null, r: unknown) => void) =>
+        callback(new Error("statement setup failed"), null),
+      ),
+      closeSession: jest.fn((_req: unknown, callback: (e: Error | null, r: unknown) => void) =>
+        callback(null, { status: { code: 200 } }),
+      ),
+    });
+
+    const config: InternalConfig = {
+      host: "localhost",
+      port: 6667,
+      username: "root",
+      password: "root",
+      enableSSL: false,
+      sqlDialect: "tree",
+    };
+    const connection = new Connection(config);
+
+    await expect(connection.open()).rejects.toThrow("statement setup failed");
+
+    // The failed setup must not leave a stale sessionId reachable (mirrors
+    // close()); getSessionId() throws once the id is cleared.
+    expect(() => connection.getSessionId()).toThrow("Session is not open");
+  });
 });
