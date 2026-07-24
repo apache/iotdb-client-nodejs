@@ -61,7 +61,10 @@ function parseNodeUrl(url: string): EndPoint {
     host = trimmed.slice(0, idx).trim();
     portStr = trimmed.slice(idx + 1).trim();
   }
-  const port = parseInt(portStr, 10);
+  // Require the port to be all digits: parseInt would otherwise accept a numeric prefix, so
+  // "[::1]:6667junk" or "[::1]:6667:9999" would be silently read as port 6667 and mask a malformed
+  // endpoint (IoTDB's Java and Python parsers reject these because the whole value must convert).
+  const port = /^\d+$/.test(portStr) ? parseInt(portStr, 10) : NaN;
   if (!host || isNaN(port) || port <= 0 || port > 65535) {
     throw new Error(`Invalid nodeUrl format: ${url}. Host must be non-empty and port must be a valid number (1-65535)`);
   }
