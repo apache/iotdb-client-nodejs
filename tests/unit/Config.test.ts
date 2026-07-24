@@ -182,10 +182,37 @@ describe('parseNodeUrls', () => {
 
   test('Should handle whitespace in nodeUrls', () => {
     const nodeUrls = [' localhost : 6667 '];
-    
+
     const parsed = parseNodeUrls(nodeUrls);
-    
+
     expect(parsed[0]).toEqual({ host: 'localhost', port: 6667 });
+  });
+
+  test('Should parse bracketed IPv6 nodeUrls', () => {
+    const parsed = parseNodeUrls(['[::1]:6667', '[2001:db8::1]:6668']);
+
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toEqual({ host: '::1', port: 6667 });
+    expect(parsed[1]).toEqual({ host: '2001:db8::1', port: 6668 });
+  });
+
+  test('Should throw for a bare (unbracketed) IPv6 address', () => {
+    expect(() => parseNodeUrls(['::1:6667'])).toThrow('Invalid nodeUrl format');
+  });
+
+  test('Should throw for malformed bracketed IPv6', () => {
+    expect(() => parseNodeUrls(['[::1:6667'])).toThrow('Invalid nodeUrl format'); // unbalanced bracket
+    expect(() => parseNodeUrls(['[::1]6667'])).toThrow('Invalid nodeUrl format'); // missing colon before port
+    expect(() => parseNodeUrls(['[::1]:'])).toThrow('Invalid nodeUrl format'); // empty port
+  });
+
+  test('Should throw for a port with trailing non-digits', () => {
+    // parseInt accepts a numeric prefix; the whole port string must be digits so a malformed
+    // endpoint is rejected instead of silently parsed as the leading number.
+    expect(() => parseNodeUrls(['[::1]:6667junk'])).toThrow('Invalid nodeUrl format'); // trailing text
+    expect(() => parseNodeUrls(['[::1]:6667:9999'])).toThrow('Invalid nodeUrl format'); // extra :port
+    expect(() => parseNodeUrls(['localhost:6667junk'])).toThrow('Invalid nodeUrl format'); // hostname
+    expect(() => parseNodeUrls(['127.0.0.1:80x'])).toThrow('Invalid nodeUrl format'); // IPv4
   });
 });
 
