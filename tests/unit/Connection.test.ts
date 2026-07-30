@@ -130,6 +130,78 @@ describe("Connection", () => {
     await connection.close();
   });
 
+  test("Should not create another connection when open is called repeatedly", async () => {
+    const config: InternalConfig = {
+      host: "localhost",
+      port: 6667,
+      username: "root",
+      password: "root",
+      enableSSL: false,
+      sqlDialect: "tree",
+    };
+    const connection = new Connection(config);
+
+    await connection.open();
+    await connection.open();
+
+    expect(thriftMock.createConnection).toHaveBeenCalledTimes(1);
+    expect(thriftMock.createClient).toHaveBeenCalledTimes(1);
+
+    await connection.close();
+  });
+
+  test("Should share the connection attempt between concurrent open calls", async () => {
+    let completeOpenSession!: (error: Error | null, response: unknown) => void;
+    const openSession = jest.fn(
+      (
+        _req: unknown,
+        callback: (error: Error | null, response: unknown) => void,
+      ) => {
+        completeOpenSession = callback;
+      },
+    );
+    const requestStatementId = jest.fn(
+      (
+        _sessionId: unknown,
+        callback: (error: Error | null, statementId: number) => void,
+      ) => callback(null, 456),
+    );
+    const closeSession = jest.fn(
+      (
+        _req: unknown,
+        callback: (error: Error | null, response: unknown) => void,
+      ) => callback(null, { status: { code: 200 } }),
+    );
+    thriftMock.createClient.mockReturnValueOnce({
+      openSession,
+      requestStatementId,
+      closeSession,
+    });
+
+    const connection = new Connection({
+      host: "localhost",
+      port: 6667,
+      username: "root",
+      password: "root",
+      enableSSL: false,
+      sqlDialect: "tree",
+    });
+
+    const firstOpen = connection.open();
+    const secondOpen = connection.open();
+
+    expect(thriftMock.createConnection).toHaveBeenCalledTimes(1);
+    expect(openSession).toHaveBeenCalledTimes(1);
+
+    completeOpenSession(null, { status: { code: 200 }, sessionId: 123 });
+    await Promise.all([firstOpen, secondOpen]);
+
+    expect(requestStatementId).toHaveBeenCalledTimes(1);
+    expect(connection.isOpen()).toBe(true);
+
+    await connection.close();
+  });
+
   test("Should tear down the socket when session setup fails", async () => {
     // openSession rejects after the TCP connection was established.
     thriftMock.createClient.mockReturnValueOnce({
@@ -192,5 +264,35 @@ describe("Connection", () => {
     // The failed setup must not leave a stale sessionId reachable (mirrors
     // close()); getSessionId() throws once the id is cleared.
     expect(() => connection.getSessionId()).toThrow("Session is not open");
+  });
+
+  test("Should allow open to be retried after a failed attempt", async () => {
+    thriftMock.createClient.mockReturnValueOnce({
+      openSession: jest.fn(
+        (
+          _req: unknown,
+          callback: (error: Error | null, response: unknown) => void,
+        ) => callback(new Error("temporary failure"), null),
+      ),
+      requestStatementId: jest.fn(),
+      closeSession: jest.fn(),
+    });
+
+    const connection = new Connection({
+      host: "localhost",
+      port: 6667,
+      username: "root",
+      password: "root",
+      enableSSL: false,
+      sqlDialect: "tree",
+    });
+
+    await expect(connection.open()).rejects.toThrow("temporary failure");
+    await connection.open();
+
+    expect(thriftMock.createConnection).toHaveBeenCalledTimes(2);
+    expect(connection.isOpen()).toBe(true);
+
+    await connection.close();
   });
 });

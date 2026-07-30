@@ -31,12 +31,32 @@ export class Connection {
   private sessionId: number | null = null;
   private statementId: number | null = null;
   private isConnected: boolean = false;
+  private openingPromise: Promise<void> | null = null;
 
   constructor(config: InternalConfig) {
     this.config = config;
   }
 
   async open(): Promise<void> {
+    if (this.isConnected) {
+      return;
+    }
+
+    if (!this.openingPromise) {
+      this.openingPromise = this.establishConnection();
+    }
+
+    const openingPromise = this.openingPromise;
+    try {
+      await openingPromise;
+    } finally {
+      if (this.openingPromise === openingPromise) {
+        this.openingPromise = null;
+      }
+    }
+  }
+
+  private async establishConnection(): Promise<void> {
     try {
       if (!this.config.host || !this.config.port) {
         throw new Error("Host and port are required for connection");
@@ -216,7 +236,7 @@ export class Connection {
         });
 
         // Use a timeout handle that we can clear
-        let timeoutHandle: NodeJS.Timeout | null = null;
+        let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
         await Promise.race([
           new Promise<void>((resolve, reject) => {
