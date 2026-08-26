@@ -286,6 +286,26 @@ describe('Tablet Serialization', () => {
 
       expect(buffer.readInt32BE(offset)).toBe(1);
     });
+
+    test('should serialize OBJECT column with the same length-prefix encoding as BLOB', () => {
+      const segment1 = Buffer.from([1, 0, 0, 0, 0, 0, 0, 0, 0, 0x11, 0x22]);
+      const segment2 = Buffer.from([1, 0, 0, 0, 0, 0, 0, 2, 0, 0x33]);
+      const values = [segment1, null, segment2];
+      const buffer = (session as any).serializeColumn(values, TSDataType.OBJECT);
+
+      let offset = 0;
+      expect(buffer.readInt32BE(offset)).toBe(11);
+      offset += 4;
+      expect(buffer.subarray(offset, offset + 11).equals(segment1)).toBe(true);
+      offset += 11;
+
+      expect(buffer.readInt32BE(offset)).toBe(0); // null → empty
+      offset += 4;
+
+      expect(buffer.readInt32BE(offset)).toBe(10);
+      offset += 4;
+      expect(buffer.subarray(offset, offset + 10).equals(segment2)).toBe(true);
+    });
   });
 
   describe('Fast vs Legacy Tablet Serialization (golden wire-format test)', () => {
@@ -364,6 +384,16 @@ describe('Tablet Serialization', () => {
         [Buffer.from([0xff]), new Date('2025-06-15')],
       ];
       compare(values, dataTypes, 4);
+    });
+
+    test('OBJECT tablet matches legacy byte-for-byte', () => {
+      const dataTypes = [TSDataType.STRING, TSDataType.OBJECT];
+      const values: any[][] = [
+        ['tag-1', Buffer.from([1, 0, 0, 0, 0, 0, 0, 0, 0, 0x11, 0x22])],
+        ['tag-2', null],
+        ['tag-3', Buffer.from([1, 0, 0, 0, 0, 0, 0, 2, 0, 0x33])],
+      ];
+      compare(values, dataTypes, 3);
     });
 
     test('non-Buffer BLOB inputs (Uint8Array, byte array, string) match legacy', () => {

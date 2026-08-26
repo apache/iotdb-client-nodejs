@@ -96,7 +96,13 @@ export enum TSDataType {
    */
   STRING = 11,
 
-  // OBJECT = 12,   // Reserved - not yet implemented
+  /**
+   * OBJECT (table model only)
+   * JavaScript type: Buffer (built with the segment framing: 1-byte isEOF +
+   * 8-byte big-endian offset + raw content)
+   * Storage size: variable (4-byte length prefix + binary content)
+   */
+  OBJECT = 12,
 }
 
 /**
@@ -241,7 +247,46 @@ export function getDataTypeName(typeCode: number): string {
       return "BLOB";
     case TSDataType.STRING:
       return "STRING";
+    case TSDataType.OBJECT:
+      return "OBJECT";
     default:
       return "UNKNOWN";
   }
+}
+
+/**
+ * Format the wire representation of a stored OBJECT value for display.
+ *
+ * The server stores OBJECT cells as an 8-byte big-endian file size followed
+ * by the internal object path. Mirroring the Go client's objectBytesToString,
+ * this helper renders the size in human-readable units:
+ * "(Object) 1023 B", "(Object) 1.00 KB", "(Object) 1.00 MB",
+ * "(Object) 1.00 GB".
+ *
+ * @param input - Raw OBJECT cell bytes (at least the 8-byte size prefix)
+ * @returns Human-readable size string
+ * @throws Error if the input is shorter than 8 bytes
+ */
+export function objectBytesToString(input: Buffer | Uint8Array): string {
+  if (input.length < 8) {
+    throw new Error(
+      "Invalid OBJECT value: expected at least 8 bytes, got " + input.length,
+    );
+  }
+  const buffer = Buffer.isBuffer(input) ? input : Buffer.from(input);
+  const size = buffer.readUInt32BE(0) * 0x100000000 + buffer.readUInt32BE(4);
+  const KILOBYTE = 1024;
+  const MEGABYTE = KILOBYTE * 1024;
+  const GIGABYTE = MEGABYTE * 1024;
+
+  if (size < KILOBYTE) {
+    return "(Object) " + size + " B";
+  }
+  if (size < MEGABYTE) {
+    return "(Object) " + (size / KILOBYTE).toFixed(2) + " KB";
+  }
+  if (size < GIGABYTE) {
+    return "(Object) " + (size / MEGABYTE).toFixed(2) + " MB";
+  }
+  return "(Object) " + (size / GIGABYTE).toFixed(2) + " GB";
 }

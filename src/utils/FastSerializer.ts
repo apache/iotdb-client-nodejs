@@ -299,6 +299,7 @@ export function serializeColumnFast(values: any[], dataType: number): Buffer {
     case 9: // DATE
       return serializeDateColumn(values);
     case 10: // BLOB
+    case 12: // OBJECT (same length-prefixed binary encoding)
       return serializeBlobColumn(values);
     default:
       throw new Error(`Unsupported data type: ${dataType}`);
@@ -370,7 +371,8 @@ export function serializeTabletValuesFast(
         }
         break;
       }
-      case 10: { // BLOB
+      case 10: // BLOB
+      case 12: { // OBJECT (same length-prefixed binary encoding)
         for (let r = 0; r < rowCount; r++) {
           const v = values[r][c];
           dataSize += 4 + (v === null || v === undefined ? 0 : blobByteLength(v));
@@ -517,7 +519,8 @@ export function serializeTabletValuesFast(
           off += 4;
         }
         break;
-      case 10: { // BLOB
+      case 10: // BLOB
+      case 12: { // OBJECT (same length-prefixed binary encoding)
         for (let r = 0; r < rowCount; r++) {
           const v = values[r][c];
           if (v === null || v === undefined) {
