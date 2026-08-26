@@ -29,12 +29,12 @@ import { registerClosable, unregisterClosable } from "../utils/ProcessCleanup";
 import { SessionDataSet } from "./SessionDataSet";
 import { RowRecord } from "./RowRecord";
 import { BaseColumnDecoder, ColumnEncoding, Column } from "./ColumnDecoder";
-import { RedirectException, isWildcardAddress } from "../utils/Errors";
+import { isWildcardAddress } from "../utils/Errors";
 import {
   serializeTabletValuesFast,
   serializeTimestamps
 } from "../utils/FastSerializer";
-import { parseDateToInt, parseIntToDate } from "../utils/DataTypes";
+import { parseDateToInt, parseIntToDate, TSDataType } from "../utils/DataTypes";
 
 const ttypes = require("../thrift/generated/client_types");
 
@@ -171,6 +171,75 @@ export class TableTablet implements ITableTablet {
     }
     this.timestamps.push(timestamp);
     this.values.push(values);
+  }
+
+  /**
+   * Build the wire representation of one OBJECT segment: a 1-byte isEOF
+   * flag, an 8-byte big-endian offset, then the raw segment content.
+   * This matches Java's
+   * Tablet.addValue(rowIndex, columnIndex, isEOF, offset, content).
+   *
+   * @param isEOF - Whether this segment is the last one of the object
+   * @param offset - Byte offset of this segment within the whole object
+   * @param content - Raw bytes of this segment
+   */
+  static buildObjectValue(
+    isEOF: boolean,
+    offset: number | bigint,
+    content: Buffer | Uint8Array,
+  ): Buffer {
+    let bigintOffset = typeof offset === "bigint" ? offset : BigInt(offset);
+    if (
+      typeof offset === "number" &&
+      (!Number.isSafeInteger(offset) || offset < 0)
+    ) {
+      throw new Error(`Invalid OBJECT segment offset: ${offset}`);
+    }
+    if (bigintOffset < 0n) {
+      throw new Error(`Invalid OBJECT segment offset: ${offset}`);
+    }
+    const raw = Buffer.isBuffer(content) ? content : Buffer.from(content);
+    const value = Buffer.allocUnsafe(9 + raw.length);
+    value[0] = isEOF ? 1 : 0;
+    value.writeBigUInt64BE(bigintOffset, 1);
+    raw.copy(value, 9);
+    return value;
+  }
+
+  /**
+   * Write one segment of an OBJECT column value at an existing row.
+   *
+   * An OBJECT value can be written in multiple segments so a large object
+   * does not need to be fully loaded into memory. Segments must be written
+   * with ascending offsets and the last segment must set isEOF to true.
+   *
+   * @param isEOF - Whether this segment is the last one of the object
+   * @param offset - Byte offset of this segment within the whole object
+   * @param content - Raw bytes of this segment
+   * @param columnIndex - Index of the OBJECT column
+   * @param rowIndex - Index of the row to write into
+   */
+  setObjectValueAt(
+    isEOF: boolean,
+    offset: number | bigint,
+    content: Buffer | Uint8Array,
+    columnIndex: number,
+    rowIndex: number,
+  ): void {
+    if (columnIndex < 0 || columnIndex >= this.columnTypes.length) {
+      throw new Error(`Illegal columnIndex: ${columnIndex}`);
+    }
+    if (this.columnTypes[columnIndex] !== TSDataType.OBJECT) {
+      throw new Error(`Column ${columnIndex} must be of type OBJECT`);
+    }
+    if (rowIndex < 0 || rowIndex >= this.values.length) {
+      throw new Error(`Illegal rowIndex: ${rowIndex}`);
+    }
+    this.values[rowIndex][columnIndex] = TableTablet.buildObjectValue(
+      isEOF,
+      offset,
+      content,
+    );
   }
 }
 
@@ -760,8 +829,9 @@ export class Session {
         });
         return buffer;
       }
-      case 10: {
-        // BLOB
+      case 10: // BLOB
+      case 12: {
+        // OBJECT (table model) uses the same binary length-prefix encoding as BLOB
         // Optimized: Pre-calculate total size to avoid multiple Buffer.concat calls
 
         // Phase 1: Convert all values to buffers and calculate total size
@@ -1152,6 +1222,7 @@ export class Session {
     else if (type.includes("DATE")) return 9;
     else if (type.includes("BLOB")) return 10;
     else if (type.includes("STRING")) return 11;
+    else if (type.includes("OBJECT")) return 12;
     return 5; // Default to TEXT
   }
 
@@ -1178,15 +1249,18 @@ export class Session {
       case 5: // TEXT - variable length, need to parse
       case 10: // BLOB - variable length
       case 11: // STRING - variable length
+      case 12: // OBJECT - variable length (binary, length-prefixed)
         // For variable-length types, count entries by parsing length prefixes
-        let count = 0;
-        let offset = 0;
-        while (offset + 4 <= length) {
-          const strLength = buffer.readInt32BE(offset);
-          offset += 4 + strLength;
-          count++;
+        {
+          let count = 0;
+          let offset = 0;
+          while (offset + 4 <= length) {
+            const strLength = buffer.readInt32BE(offset);
+            offset += 4 + strLength;
+            count++;
+          }
+          return count;
         }
-        return count;
       default:
         logger.warn(
           `Unknown data type ${dataType}, cannot determine row count`,

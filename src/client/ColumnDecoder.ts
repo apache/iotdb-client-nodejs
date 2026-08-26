@@ -17,8 +17,7 @@
  * under the License.
  */
 
-import { logger } from "../utils/Logger";
-import { parseIntToDate } from "../utils/DataTypes";
+import { objectBytesToString, parseIntToDate } from "../utils/DataTypes";
 
 /**
  * Column encoding types matching Apache IoTDB ColumnEncoding enum
@@ -323,7 +322,7 @@ class ByteArrayColumnDecoder implements ColumnDecoder {
 
 /**
  * Decoder for BINARY array encoding (encoding=3)
- * Handles TEXT, STRING, and BLOB data types with variable-length values
+ * Handles TEXT, STRING, BLOB, and OBJECT data types with variable-length values
  */
 class BinaryArrayColumnDecoder implements ColumnDecoder {
   readColumn(
@@ -332,8 +331,8 @@ class BinaryArrayColumnDecoder implements ColumnDecoder {
     dataType: number,
     positionCount: number,
   ): { column: Column; bytesRead: number } {
-    // Supports TEXT(5), BLOB(10), STRING(11)
-    if (dataType !== 5 && dataType !== 10 && dataType !== 11) {
+    // Supports TEXT(5), BLOB(10), STRING(11), OBJECT(12)
+    if (dataType !== 5 && dataType !== 10 && dataType !== 11 && dataType !== 12) {
       throw new Error(
         `Invalid data type ${dataType} for BinaryArrayColumnDecoder`,
       );
@@ -370,6 +369,9 @@ class BinaryArrayColumnDecoder implements ColumnDecoder {
       if (dataType === 10) {
         // BLOB - keep as Buffer
         values[i] = data;
+      } else if (dataType === 12) {
+        // OBJECT - render as "(Object) 1.00 KB" like the Go/C# clients
+        values[i] = objectBytesToString(data);
       } else {
         // TEXT/STRING - convert to UTF-8 string
         values[i] = data.toString("utf8");

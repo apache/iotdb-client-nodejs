@@ -18,8 +18,11 @@
  */
 
 import {
+  getDataTypeName,
+  objectBytesToString,
   parseDateToInt,
   parseIntToDate,
+  TSDataType,
 } from "../../src/utils/DataTypes";
 import {
   BaseColumnDecoder,
@@ -129,6 +132,51 @@ describe("DATE yyyyMMdd conversion", () => {
         // And the integer round-trips too
         expect(parseDateToInt(decoded)).toBe(encoded);
       }
+    });
+  });
+
+  describe("OBJECT type codes and display formatting", () => {
+    it("exposes OBJECT as TSDataType 12 and resolves its name", () => {
+      expect(TSDataType.OBJECT).toBe(12);
+      expect(getDataTypeName(12)).toBe("OBJECT");
+    });
+
+    it.each([
+      [1023, "(Object) 1023 B"],
+      [1024, "(Object) 1.00 KB"],
+      [1024 * 1024, "(Object) 1.00 MB"],
+      [1024 * 1024 * 1024, "(Object) 1.00 GB"],
+    ] as const)("formats %d bytes as %s", (size, expected) => {
+      const buffer = Buffer.alloc(8 + 4);
+      buffer.writeUInt32BE(Math.floor(size / 0x100000000), 0);
+      buffer.writeUInt32BE(size >>> 0, 4);
+      expect(objectBytesToString(buffer)).toBe(expected);
+    });
+
+    it("rejects OBJECT values shorter than the 8-byte size prefix", () => {
+      expect(() => objectBytesToString(Buffer.alloc(7))).toThrow(
+        /expected at least 8 bytes/,
+      );
+    });
+  });
+
+  describe("TsBlock column decode (BinaryArrayColumnDecoder for OBJECT)", () => {
+    it("decodes an OBJECT cell as a human-readable size string", () => {
+      // BinaryArray column: mayHaveNull=0, length i32 BE, 8-byte size + path.
+      const payload = Buffer.alloc(8 + "internal/path/1.bin".length);
+      payload.writeUInt32BE(0, 0);
+      payload.writeUInt32BE(1024, 4);
+      payload.write("internal/path/1.bin", 8, "utf8");
+
+      const buffer = Buffer.concat([
+        Buffer.from([0x00]), // mayHaveNull
+        Buffer.from([0, 0, 0, payload.length]),
+        payload,
+      ]);
+
+      const decoder = BaseColumnDecoder.getDecoder(ColumnEncoding.BinaryArray);
+      const { column } = decoder.readColumn(buffer, 0, TSDataType.OBJECT, 1);
+      expect(column.values[0]).toBe("(Object) 1.00 KB");
     });
   });
 
