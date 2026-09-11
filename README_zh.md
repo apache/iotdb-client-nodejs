@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 [![npm version](https://img.shields.io/npm/v/@iotdb/client.svg)](https://www.npmjs.com/package/@iotdb/client)
-[![Node.js Version](https://img.shields.io/node/v/@iotdb/client.svg)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/node/v/@iotdb/client)](https://nodejs.org/)
 
 用于 Apache IoTDB 的 Node.js 客户端，支持 SessionPool 和 TableSessionPool，提供高效的连接管理和全面的查询功能。
 
