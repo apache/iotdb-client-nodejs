@@ -7,7 +7,24 @@
   "description": "Apache IoTDB Node.js client with SessionPool and TableSessionPool support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "README.md",
+    "README_zh.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apache/iotdb-client-nodejs.git"
+  },
+  "homepage": "https://iotdb.apache.org/",
+  "bugs": {
+    "url": "https://github.com/apache/iotdb-client-nodejs/issues"
+  },
   "scripts": {
+    "prebuild": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run build:esbuild && npm run build:types && npm run copy:thrift",
     "build:esbuild": "node esbuild.config.js",
     "build:types": "tsc --emitDeclarationOnly",
@@ -32,7 +49,7 @@
     "thrift",
     "apache"
   ],
-  "author": "",
+  "author": "The Apache Software Foundation",
   "license": "Apache-2.0",
   "dependencies": {
     "denque": "^2.1.0",

@@ -1,0 +1,10 @@
+Apache IoTDB Client for Node.js
+Copyright 2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+The Thrift service definitions in this product are derived from the
+Apache IoTDB project (https://iotdb.apache.org/), and the generated
+Thrift stubs are produced with the Apache Thrift compiler
+(https://thrift.apache.org/).
