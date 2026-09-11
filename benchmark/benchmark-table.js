@@ -41,8 +41,7 @@
 const { TableSessionPool } = require('../dist');
 const { createConfig, printConfig } = require('./config');
 const { prepareTestData } = require('./data-generator');
-const { createTableModelSchema, cleanupSchema } = require('./schema-manager');
-const { runBatchBenchmark } = require('./benchmark-core');
+const { createTableModelSchema } = require('./schema-manager');
 
 // Import ColumnCategory from dist
 const { ColumnCategory } = require('../dist');
@@ -233,7 +232,7 @@ async function runStreamingBenchmark(pool, testData, config) {
             if (i >= warmupTablets.length) break;
             try {
               await session.insertTablet(warmupTablets[i]);
-            } catch (e) { /* ignore warmup errors */ }
+            } catch { /* ignore warmup errors */ }
           }
         });
         await Promise.all(workers);

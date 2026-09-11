@@ -17,6 +17,8 @@ export default [
       globals: {
         ...globals.node,
         ...globals.es2020,
+        // Type namespace provided by @types/node; no-undef cannot see it.
+        NodeJS: 'readonly',
       },
     },
     plugins: {

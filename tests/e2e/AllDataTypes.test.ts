@@ -39,7 +39,7 @@ describe("All Data Types E2E Tests", () => {
     try {
       await session.open();
       console.log("Connected to IoTDB for all data types test");
-    } catch (error) {
+    } catch {
       console.warn("Could not connect to IoTDB. E2E tests will be skipped.");
       console.warn(
         "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",

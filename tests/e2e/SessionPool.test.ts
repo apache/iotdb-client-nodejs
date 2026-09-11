@@ -40,7 +40,7 @@ describe("SessionPool E2E Tests", () => {
     try {
       await pool.init();
       isConnected = true;
-    } catch (error) {
+    } catch {
       console.warn("Could not connect to IoTDB. E2E tests will be skipped.");
       console.warn(
         "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",
@@ -58,7 +58,7 @@ describe("SessionPool E2E Tests", () => {
       // Cleanup test data
       try {
         await pool.executeNonQueryStatement("DROP DATABASE root.test");
-      } catch (error) {
+      } catch {
         // Ignore cleanup errors
       }
       await pool.close();
@@ -182,7 +182,7 @@ describe("SessionPool E2E Tests", () => {
       await multiNodePool.init();
       expect(multiNodePool.getPoolSize()).toBeGreaterThanOrEqual(1);
       await multiNodePool.close();
-    } catch (error) {
+    } catch {
       console.warn(
         "Multi-node test failed, this is expected if IoTDB is not available",
       );

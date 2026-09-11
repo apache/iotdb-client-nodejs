@@ -55,7 +55,7 @@ async function main() {
 }
 
 // For self-signed certificates or testing, you can use:
-async function selfSignedExample() {
+export async function selfSignedExample() {
   const session = new Session({
     host: 'localhost',
     port: 6667,

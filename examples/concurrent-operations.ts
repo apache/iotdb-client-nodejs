@@ -20,7 +20,7 @@ import {
   createSemaphore
 } from "../src";
 
-async function demonstrateSessionApis() {
+export async function demonstrateSessionApis() {
   console.log("=== Session Concurrent APIs ===\n");
 
   const session = new Session({
@@ -90,7 +90,7 @@ async function demonstrateSessionApis() {
   }
 }
 
-async function demonstratePoolApis() {
+export async function demonstratePoolApis() {
   console.log("\n=== SessionPool Concurrent APIs ===\n");
 
   const pool = new SessionPool("localhost", 6667, {

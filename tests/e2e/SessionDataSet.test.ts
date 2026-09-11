@@ -36,7 +36,7 @@ describe("SessionDataSet E2E Tests", () => {
 
     try {
       await session.open();
-    } catch (error) {
+    } catch {
       console.warn("Could not connect to IoTDB. Tests will be skipped.");
       try {
         await session.close();
@@ -61,7 +61,7 @@ describe("SessionDataSet E2E Tests", () => {
     // Setup test data
     try {
       await session.executeNonQueryStatement("DELETE DATABASE root.test");
-    } catch (e) {
+    } catch {
       // Ignore if doesn't exist
     }
 
@@ -247,7 +247,7 @@ describe("SessionDataSet E2E Tests", () => {
     // Setup test data
     try {
       await session.executeNonQueryStatement("DELETE DATABASE root.test");
-    } catch (e) {
+    } catch {
       // Ignore
     }
 

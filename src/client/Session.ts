@@ -29,7 +29,7 @@ import { registerClosable, unregisterClosable } from "../utils/ProcessCleanup";
 import { SessionDataSet } from "./SessionDataSet";
 import { RowRecord } from "./RowRecord";
 import { BaseColumnDecoder, ColumnEncoding, Column } from "./ColumnDecoder";
-import { RedirectException, isWildcardAddress } from "../utils/Errors";
+import { isWildcardAddress } from "../utils/Errors";
 import {
   serializeTabletValuesFast,
   serializeTimestamps
@@ -1179,14 +1179,16 @@ export class Session {
       case 10: // BLOB - variable length
       case 11: // STRING - variable length
         // For variable-length types, count entries by parsing length prefixes
-        let count = 0;
-        let offset = 0;
-        while (offset + 4 <= length) {
-          const strLength = buffer.readInt32BE(offset);
-          offset += 4 + strLength;
-          count++;
+        {
+          let count = 0;
+          let offset = 0;
+          while (offset + 4 <= length) {
+            const strLength = buffer.readInt32BE(offset);
+            offset += 4 + strLength;
+            count++;
+          }
+          return count;
         }
-        return count;
       default:
         logger.warn(
           `Unknown data type ${dataType}, cannot determine row count`,
