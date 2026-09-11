@@ -116,6 +116,7 @@ async function main() {
     // Close the session
     console.log("\nClosing session...");
     await session.close();
+    await session2.close();
     console.log("Session closed");
   }
 }

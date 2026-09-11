@@ -45,10 +45,10 @@ describe("TableSessionPool E2E Tests", () => {
       // Cleanup from previous runs
       try {
         await pool.executeNonQueryStatement("DROP DATABASE test");
-      } catch (e) {
+      } catch {
         // Ignore errors if database doesn't exist
       }
-    } catch (error) {
+    } catch {
       console.warn("Could not connect to IoTDB. E2E tests will be skipped.");
       console.warn(
         "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",
@@ -66,7 +66,7 @@ describe("TableSessionPool E2E Tests", () => {
       // Cleanup
       try {
         await pool.executeNonQueryStatement("DROP DATABASE test");
-      } catch (e) {
+      } catch {
         // Ignore cleanup errors
       }
       await pool.close();
@@ -401,7 +401,7 @@ describe("TableSessionPool E2E Tests", () => {
       await pool.executeNonQueryStatement(
         `CREATE TABLE IF NOT EXISTS ${tableName}(device_id STRING TAG, value FLOAT FIELD)`
       );
-    } catch (e: any) {
+    } catch {
       // Ignore if already exists
     }
 
@@ -456,7 +456,7 @@ describe("TableSessionPool E2E Tests", () => {
           await session.executeNonQueryStatement(
             `CREATE TABLE IF NOT EXISTS ${tableName}(device_id STRING TAG, value FLOAT FIELD)`
           );
-        } catch (e: any) {
+        } catch {
           // Ignore if already exists
         }
         return tableName;

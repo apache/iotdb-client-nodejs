@@ -103,7 +103,7 @@ describe("Multi-Node E2E Tests", () => {
     if (isConnected) {
       try {
         await pool1.executeNonQueryStatement("DROP DATABASE root.test");
-      } catch (error) {
+      } catch {
         // Ignore cleanup errors
       }
 

@@ -79,10 +79,6 @@ const INSERT_DATATYPE_PROPORTION = {
   [TSDataType.BOOLEAN]: 0.1,
 };
 
-// Generate sensor types ONCE with fixed seed for consistency across all processes
-// This ensures schema and data match
-const SENSOR_TYPES = distributeSensorTypes(SENSOR_NUMBER, INSERT_DATATYPE_PROPORTION);
-
 if (cluster.isPrimary) {
   // ============== PRIMARY PROCESS ==============
   runPrimary();
@@ -181,7 +177,7 @@ async function runPrimary() {
 }
 
 async function createSchema() {
-  const { TableSessionPool, ColumnCategory } = require('../dist');
+  const { TableSessionPool } = require('../dist');
 
   const pool = new TableSessionPool(IOTDB_HOST, IOTDB_PORT, {
     username: IOTDB_USER,
@@ -197,7 +193,7 @@ async function createSchema() {
     // Drop existing database
     try {
       await pool.executeNonQueryStatement(`DROP DATABASE ${DATABASE_NAME}`);
-    } catch (e) {
+    } catch {
       // Ignore if not exists
     }
 
@@ -291,7 +287,7 @@ async function runWorker() {
               if (i >= warmupTablets.length) break;
               try {
                 await session.insertTablet(warmupTablets[i]);
-              } catch (e) { /* ignore */ }
+              } catch { /* ignore */ }
             }
           }));
         } finally {
@@ -318,7 +314,6 @@ async function runWorker() {
       const tablets = buildTabletsForLoop(devices, sharedBatch, loopIdx, ColumnCategory);
 
       let tabletIndex = 0;
-      const loopStartTime = performance.now();
 
       await Promise.all(sessions.map(async (session) => {
         while (tabletIndex < tablets.length) {
@@ -334,7 +329,7 @@ async function runWorker() {
             totalLatency += latency;
             totalOperations++;
             totalDataPoints += tablet.timestamps.length * (tablet.columnNames.length - 1); // -1 for device_id
-          } catch (error) {
+          } catch {
             // Count as failed but continue
           }
         }

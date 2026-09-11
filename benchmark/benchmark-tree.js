@@ -41,8 +41,7 @@
 const { SessionPool } = require('../dist');
 const { createConfig, printConfig } = require('./config');
 const { prepareTestData } = require('./data-generator');
-const { createTreeModelSchema, cleanupSchema } = require('./schema-manager');
-const { runBatchBenchmark } = require('./benchmark-core');
+const { createTreeModelSchema } = require('./schema-manager');
 
 /**
  * Create session pool for tree model
@@ -213,7 +212,7 @@ async function runStreamingBenchmark(pool, testData, config) {
             if (i >= warmupTablets.length) break;
             try {
               await session.insertTablet(warmupTablets[i]);
-            } catch (e) { /* ignore warmup errors */ }
+            } catch { /* ignore warmup errors */ }
           }
         });
         await Promise.all(workers);

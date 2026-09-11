@@ -102,6 +102,9 @@ async function main() {
     console.error('Error:', error);
   } finally {
     await pool.close();
+    await pool2.close();
+    await pool3.close();
+    await pool4.close();
     console.log('Pool closed');
   }
 }

@@ -17,7 +17,6 @@
  * under the License.
  */
 
-import { logger } from "../utils/Logger";
 import { parseIntToDate } from "../utils/DataTypes";
 
 /**

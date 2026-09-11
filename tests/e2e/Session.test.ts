@@ -38,7 +38,7 @@ describe("Session E2E Tests", () => {
 
     try {
       await session.open();
-    } catch (error) {
+    } catch {
       console.warn("Could not connect to IoTDB. E2E tests will be skipped.");
       console.warn(
         "Set IOTDB_HOST, IOTDB_PORT to run E2E tests against a real instance.",
@@ -56,7 +56,7 @@ describe("Session E2E Tests", () => {
       // Cleanup test data
       try {
         await session.executeNonQueryStatement("DROP DATABASE root.test");
-      } catch (e) {
+      } catch {
         // Ignore cleanup errors
       }
       await session.close();

@@ -411,7 +411,7 @@ async function isDataFileValid(filePath, config) {
     }
 
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

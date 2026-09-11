@@ -179,6 +179,7 @@ async function main() {
     // Close the pool
     console.log("\nClosing session pool...");
     await pool.close();
+    await pool2.close();
     console.log("Pool closed");
   }
 }

@@ -91,7 +91,7 @@ async function createTreeModelSchema(session, testData, config) {
         `DROP DEVICE TEMPLATE ${templateName}`
       );
       console.log('  ✓ Existing template dropped');
-    } catch (error) {
+    } catch {
       console.log('  ℹ Template does not exist, will create new one');
     }
 
@@ -182,7 +182,7 @@ async function createTableModelSchema(session, testData, config) {
     try {
       await session.executeNonQueryStatement(`DROP TABLE ${config.TABLE_NAME}`);
       console.log('  ✓ Dropped existing table');
-    } catch (error) {
+    } catch {
       // Ignore if table doesn't exist
     }
 
@@ -234,7 +234,7 @@ async function cleanupSchema(session, model, config) {
           `DELETE DATABASE ${config.STORAGE_GROUP_PREFIX}.*`
         );
         console.log('  ✓ Storage group deleted');
-      } catch (error) {
+      } catch {
         console.log('  ℹ Storage group does not exist or already deleted');
       }
     } else if (model === 'table') {
@@ -244,7 +244,7 @@ async function cleanupSchema(session, model, config) {
           `DROP DATABASE ${config.DATABASE_NAME}`
         );
         console.log('  ✓ Database dropped');
-      } catch (error) {
+      } catch {
         console.log('  ℹ Database does not exist or already deleted');
       }
     }

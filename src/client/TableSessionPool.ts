@@ -18,7 +18,7 @@
  */
 
 import { TableSession } from "./TableSession";
-import { Session, TableTablet, TreeTablet } from "./Session";
+import { Session } from "./Session";
 import { PoolConfig, SQL_DIALECT_TABLE, InternalConfig } from "../utils/Config";
 import { BaseSessionPool } from "./BaseSessionPool";
 import { logger } from "../utils/Logger";

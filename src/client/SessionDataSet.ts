@@ -412,7 +412,7 @@ export class SessionDataSet {
         statementId: this.statementId,
       });
 
-      await new Promise<void>((resolve, reject) => {
+      await new Promise<void>((resolve) => {
         client.closeOperation(req, (err: Error, response: any) => {
           if (err) {
             logger.warn(`Error closing query operation: ${err.message}`);

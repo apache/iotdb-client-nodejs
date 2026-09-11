@@ -213,6 +213,9 @@ async function main() {
   } finally {
     console.log("\nClosing table session pool...");
     await pool.close();
+    await pool2.close();
+    await pool3.close();
+    await pool4.close();
     console.log("Table pool closed");
   }
 }
