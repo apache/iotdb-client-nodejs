@@ -50,7 +50,8 @@ export abstract class BaseSessionPool {
   protected config: PoolConfig;
   protected endPoints: EndPoint[];
   protected pool: PooledSession[] = [];
-  protected waitQueue: Denque<(session: Session) => boolean> = new Denque();
+  protected waitQueue: Denque<(result: Session | Error) => boolean> =
+    new Denque();
   protected idleSessions: Denque<PooledSession> = new Denque();
   protected activeSessions: Set<PooledSession> = new Set();
   protected currentEndPointIndex = 0;
@@ -295,15 +296,20 @@ export abstract class BaseSessionPool {
       // reference (not `resolve`, which is never in the queue), and the
       // `settled` guard makes timeout and fulfillment mutually exclusive so a
       // session is never handed to a waiter whose promise already rejected.
-      const waiter = (session: Session): boolean => {
+      // close() passes an Error instead of a session to fail the waiter.
+      const waiter = (result: Session | Error): boolean => {
         if (settled) {
           return false;
         }
         settled = true;
         clearTimeout(timeoutId);
+        if (result instanceof Error) {
+          reject(result);
+          return true;
+        }
         const duration = Date.now() - startTime;
         logger.debug(`[PERF] getSession (waited): ${duration}ms`);
-        resolve(session);
+        resolve(result);
         return true;
       };
 
@@ -508,6 +514,11 @@ export abstract class BaseSessionPool {
       this.cleanupInterval = null;
     }
 
+    // Fail the callers waiting in getSession() now. Otherwise each of them
+    // waits for waitTimeout and then reports pool exhaustion, or never settles
+    // at all if nothing else keeps the process alive (the timeout is unref'd).
+    this.rejectWaiters();
+
     // Close all sessions
     await Promise.all(
       this.pool.map(async (ps) => {
@@ -522,11 +533,20 @@ export abstract class BaseSessionPool {
     this.pool = [];
     this.idleSessions.clear();
     this.activeSessions.clear();
-    this.waitQueue.clear();
+    // getSession() calls that started waiting while the sessions were closing.
+    // A session released during close() can still have been handed to one of
+    // them, as before.
+    this.rejectWaiters();
     this.endPointToSession.clear();
     this.redirectCache.clear();
     unregisterClosable(this);
     logger.info(`${this.getPoolName()} closed`);
+  }
+
+  private rejectWaiters(): void {
+    while (this.waitQueue.length > 0) {
+      this.waitQueue.shift()?.(new Error(`${this.getPoolName()} is closed`));
+    }
   }
 
   getPoolSize(): number {

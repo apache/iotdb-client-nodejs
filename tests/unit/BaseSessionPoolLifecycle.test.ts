@@ -77,6 +77,18 @@ function newPool(overrides: Record<string, unknown>): TestPool {
   } as any);
 }
 
+/** Resolves to "still pending" if the promise has not settled within `ms`. */
+function settledWithin<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T | string> {
+  let timer: NodeJS.Timeout;
+  const pending = new Promise<string>((resolve) => {
+    timer = setTimeout(() => resolve("still pending"), ms);
+  });
+  return Promise.race([promise, pending]).finally(() => clearTimeout(timer));
+}
+
 describe("BaseSessionPool lifecycle", () => {
   it("does not leak a released session to a timed-out waiter (no starvation)", async () => {
     const pool = newPool({ maxPoolSize: 1, waitTimeout: 50 });
@@ -201,5 +213,40 @@ describe("BaseSessionPool lifecycle", () => {
     await cleanup;
 
     await pool.close();
+  });
+
+  it("rejects a caller waiting in getSession() as soon as close() starts", async () => {
+    const pool = newPool({ maxPoolSize: 1, waitTimeout: 10000 });
+    const s1: any = await pool.getSession(); // pool is now full (1/1)
+    const waiting = settledWithin(pool.getSession(), 1000);
+    let openClose!: () => void;
+    s1.closeGate = new Promise<void>((resolve) => {
+      openClose = resolve;
+    });
+
+    const closing = pool.close(); // parks on s1.close()
+
+    // On the buggy code the waiter stays pending until waitTimeout and then
+    // reports "Timeout waiting for available session".
+    await expect(waiting).rejects.toThrow("SessionPool is closed");
+    openClose();
+    await closing;
+  });
+
+  it("rejects a caller that starts waiting while close() is running", async () => {
+    const pool = newPool({ maxPoolSize: 1, waitTimeout: 10000 });
+    const s1: any = await pool.getSession();
+    let openClose!: () => void;
+    s1.closeGate = new Promise<void>((resolve) => {
+      openClose = resolve;
+    });
+
+    const closing = pool.close();
+    // s1 is still in the pool while it closes, so this call has to wait.
+    const waiting = settledWithin(pool.getSession(), 1000);
+    openClose();
+    await closing;
+
+    await expect(waiting).rejects.toThrow("SessionPool is closed");
   });
 });
